@@ -11,7 +11,10 @@
          popup lap/sektor benar-benar tampil, sektor 3 + best sector + theoretical best,
          delta live vs best lap (per 10 m), sisa jarak setelah garis tidak hilang.
   LOGGER: log GNSS+IMU ke flash W25Q128 16 MB (U7), unduh lewat Wi-Fi /logs & /log.csv.
-  KEAMANAN: password Wi-Fi AP & OTA bisa diganti lewat Serial (wifipass / otapass).
+  WI-FI : default TANPA SANDI (seperti timer GPS komersial). Pemilik bisa membuat sandi sendiri dari
+         HP di 192.168.4.1/sandi (atau Serial "wifipass"). Sandi itu juga mengunci OTA & unduh log.
+         FACTORY RESET = kembali tanpa sandi.
+  ROLLOUT: ON/OFF berlaku untuk SEMUA mode drag (termasuk 0-100/0-200), default ON.
 
   RS16 V36.2 UNIT KPH/MPH (24 Okt 2026):
   - Mode MPH sekarang punya target asli: 0-60 MPH (dulu "0-62 MPH" = konversi 100 km/h) dan
@@ -16259,8 +16262,8 @@ static void finishDragV31(bool completed=true){
 // - Tanpa rollout: waktu start diinterpolasi tepat saat kecepatan melewati 1 km/h.
 static bool dragStillV36=false;
 static uint32_t dragStillTowV36=0;
-// V36.3: rollout 1 ft = konvensi drag strip (mode jarak) & 0-60 MPH. 0-100/0-200 KPH standar tanpa rollout.
-static bool dragUseRolloutV36(){return dragRolloutEnabled&&(!dragCheckpointsAreSpeedV31()||unitMphV31);}
+// Rollout 1 ft mengikuti setting ROLLOUT user untuk semua mode (default ON).
+static bool dragUseRolloutV36(){return dragRolloutEnabled;}
 static void serviceDragV31(){
   if(uiTestScreen!=UI_DRAG_RUNNING||dragRtV31.lastSeq==gpsPvtSequenceV30)return;
   if(gpsLastPvtMillisV30==0||millis()-gpsLastPvtMillisV30>1000UL)return;
@@ -16522,16 +16525,49 @@ WebServer rs16ServerV31(80);static bool serverRoutesV31=false,otaInProgressV31=f
 // pembacaan NVS-nya ada di loadSettingsV31() (diperbaiki 6 Sep 2026 -- sebelumnya klaim ini
 // cuma ada di komentar, tidak ada kodenya sama sekali).
 static String otaUserV36="rs16";
-static String otaPassV36="RS160016";
-static String apPassV36="RS160016";   // V36.3: password AP Wi-Fi, bisa diganti lewat Serial "wifipass <8+ karakter>"
+// Sandi pemilik: KOSONG = Wi-Fi terbuka & tanpa login (default pabrik). Kalau diisi (8-63 karakter),
+// sandi yang sama dipakai untuk Wi-Fi AP, OTA, unduh log, dan halaman ganti sandi (user "rs16").
+static String apPassV36="";
+static uint32_t wifiApRestartAtV36=0;   // AP dinyalakan ulang sebentar setelah sandi diganti
+static inline bool ownerPassSetV36(){return apPassV36.length()>=8;}
 static const char* logStorageTextV36(){return sdReadyV31?"MICRO SD":(flashReadyV36?(flogFullV36?"FLASH FULL":"FLASH 16MB"):"SERIAL ONLY");}
 static uint32_t otaLastActivityMsV36=0;
+static bool ownerAuthNoPromptV36(){return !ownerPassSetV36()||rs16ServerV31.authenticate(otaUserV36.c_str(),apPassV36.c_str());}
 static bool otaAuthOkV36(){
-  if(rs16ServerV31.authenticate(otaUserV36.c_str(),otaPassV36.c_str()))return true;
+  if(ownerAuthNoPromptV36())return true;
   rs16ServerV31.requestAuthentication();
   return false;
 }
-static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=true;rs16ServerV31.on("/",HTTP_GET,[]{rs16ServerV31.send(200,"text/plain","RS16 V31 LIVE\nGET /status\nPOST /update\n");});rs16ServerV31.on("/status",HTTP_GET,[]{char j[300];snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"gps_hz\":%.1f,\"sat\":%u,\"fix\":%s,\"imu\":%s,\"sd\":%s,\"flash_log\":%s,\"flash_used_pct\":%u,\"cfg_nak\":%u}",gpsActualRateHzV30,gpsSatellitesV30,gpsTimingReadyV31()?"true":"false",imuConnectedV31?"true":"false",sdReadyV31?"true":"false",flashReadyV36?"true":"false",(unsigned)flogUsedPctV36(),(unsigned)gpsCfgNakCountV36);rs16ServerV31.send(200,"application/json",j);});
+static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=true;rs16ServerV31.on("/",HTTP_GET,[]{rs16ServerV31.send(200,"text/html",
+    "<!doctype html><meta name=viewport content='width=device-width'><title>RS16</title><body style='font-family:sans-serif'>"
+    "<h2>RS16</h2><p><a href=/logs>Log GPS</a></p><p><a href=/status>Status</a></p><p><a href=/sandi>Sandi Wi-Fi</a></p>"
+    "<p>Firmware: POST /update</p></body>");});
+  // Halaman sandi pemilik. Selama belum ada sandi, siapa pun yang tersambung boleh membuatnya;
+  // setelah ada, harus login dengan sandi lama. Centang HAPUS = kembali tanpa sandi.
+  rs16ServerV31.on("/sandi",HTTP_GET,[]{
+    if(!otaAuthOkV36())return;
+    String h="<!doctype html><meta name=viewport content='width=device-width'><title>Sandi RS16</title><body style='font-family:sans-serif'><h2>Sandi Wi-Fi RS16</h2><p>Status: ";
+    h+=ownerPassSetV36()?"<b>SANDI AKTIF</b>":"<b>TANPA SANDI</b>";
+    h+="</p><form method=post><p>Sandi baru (8-63 karakter)<br><input name=p type=password minlength=8 maxlength=63></p>"
+       "<p>Ulangi sandi<br><input name=q type=password maxlength=63></p>"
+       "<p><label><input type=checkbox name=hapus value=1> Hapus sandi (Wi-Fi terbuka)</label></p>"
+       "<p><button>Simpan</button></p></form><p>Login OTA/log: user <b>rs16</b> + sandi ini. Lupa sandi: FACTORY RESET di perangkat.</p></body>";
+    rs16ServerV31.send(200,"text/html",h);
+  });
+  rs16ServerV31.on("/sandi",HTTP_POST,[]{
+    if(!otaAuthOkV36())return;
+    String msg;
+    if(rs16ServerV31.hasArg("hapus")){apPassV36="";prefsV31.remove("appw");msg="Sandi dihapus. Wi-Fi RS16_0016 sekarang terbuka.";}
+    else{
+      String a=rs16ServerV31.arg("p"),b=rs16ServerV31.arg("q");
+      if(a.length()<8||a.length()>63){rs16ServerV31.send(400,"text/plain","Sandi harus 8-63 karakter\n");return;}
+      if(!(a==b.c_str())){rs16ServerV31.send(400,"text/plain","Sandi tidak sama\n");return;}
+      apPassV36=a;prefsV31.putString("appw",a.c_str());msg="Sandi disimpan. Sambung ulang ke RS16_0016 dengan sandi baru.";
+    }
+    rs16ServerV31.send(200,"text/plain",msg+"\n");
+    wifiApRestartAtV36=millis()+1500;screenDirtyV31=true;
+    Serial.printf("WIFI SANDI: %s\n",ownerPassSetV36()?"AKTIF":"TERBUKA");
+  });rs16ServerV31.on("/status",HTTP_GET,[]{char j[300];snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"gps_hz\":%.1f,\"sat\":%u,\"fix\":%s,\"imu\":%s,\"sd\":%s,\"flash_log\":%s,\"flash_used_pct\":%u,\"cfg_nak\":%u}",gpsActualRateHzV30,gpsSatellitesV30,gpsTimingReadyV31()?"true":"false",imuConnectedV31?"true":"false",sdReadyV31?"true":"false",flashReadyV36?"true":"false",(unsigned)flogUsedPctV36(),(unsigned)gpsCfgNakCountV36);rs16ServerV31.send(200,"application/json",j);});
   // V36.3 unduh log flash. Auth sama dengan OTA. Ditolak saat logger merekam (bus SPI & waktu CPU dipakai).
   rs16ServerV31.on("/logs",HTTP_GET,[]{
     if(!otaAuthOkV36())return;
@@ -16585,7 +16621,7 @@ static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=tr
     },[]{
       HTTPUpload&u=rs16ServerV31.upload();
       if(u.status==UPLOAD_FILE_START){
-        if(!rs16ServerV31.authenticate(otaUserV36.c_str(),otaPassV36.c_str())){otaInProgressV31=false;return;}
+        if(!ownerAuthNoPromptV36()){otaInProgressV31=false;return;}
         otaBytesV31=0;otaLastActivityMsV36=millis();
         otaInProgressV31=Update.begin(UPDATE_SIZE_UNKNOWN);   // V36.2: hasil begin() dicek
         if(!otaInProgressV31)Serial.println("OTA: Update.begin GAGAL");
@@ -16599,10 +16635,14 @@ static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=tr
       }
     });
 }
-static void startWifiV31(){if(wifiUserEnabledV31&&WiFi.getMode()==WIFI_AP)return;wifiUserEnabledV31=true;WiFi.mode(WIFI_AP);WiFi.softAP("RS16_0016",apPassV36.c_str());configureOtaRoutesV31();rs16ServerV31.begin();screenDirtyV31=true;}
+static void startWifiV31(){if(wifiUserEnabledV31&&WiFi.getMode()==WIFI_AP)return;wifiUserEnabledV31=true;WiFi.mode(WIFI_AP);WiFi.softAP("RS16_0016",ownerPassSetV36()?apPassV36.c_str():nullptr);configureOtaRoutesV31();rs16ServerV31.begin();screenDirtyV31=true;}
 static void stopWifiV31(){if(otaInProgressV31)return;wifiUserEnabledV31=false;rs16ServerV31.stop();WiFi.softAPdisconnect(true);WiFi.mode(WIFI_OFF);screenDirtyV31=true;}
 static void serviceWifiV31(){
   if(wifiUserEnabledV31)rs16ServerV31.handleClient();
+  if(wifiApRestartAtV36&&(int32_t)(millis()-wifiApRestartAtV36)>=0){
+    wifiApRestartAtV36=0;
+    if(wifiUserEnabledV31&&!otaInProgressV31)WiFi.softAP("RS16_0016",ownerPassSetV36()?apPassV36.c_str():nullptr);
+  }
   // V36.1 watchdog OTA: upload macet >30 detik dibatalkan supaya device tidak terkunci
   if(otaInProgressV31 && otaLastActivityMsV36 && millis()-otaLastActivityMsV36>30000UL){
     Update.abort();
@@ -16656,8 +16696,7 @@ static void loadSettingsV31(){dragRolloutEnabled=prefsV31.getBool("roll",true);i
   // tetap dipakai. Catatan jujur: belum ada menu di layar untuk mengubahnya (belum diminta) --
   // saat ini penggantian hanya bisa lewat NVS, jadi jangan anggap password default sudah aman.
   {String u=prefsV31.getString("otau","");if(u.length())otaUserV36=u;}
-  {String p=prefsV31.getString("otap","");if(p.length())otaPassV36=p;}
-  {String w=prefsV31.getString("appw","");if(w.length()>=8)apPassV36=w;}
+  {String w=prefsV31.getString("appw","");if(w.length()>=8)apPassV36=w;}   // kosong = tanpa sandi
 }
 
 // ---------- V36.1 compare Best/Last ----------
@@ -17301,7 +17340,7 @@ static void drawImuCalRunningV31(){drawBaseV31("IMU CALIBRATION",imuConnectedV31
 static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
 
 static void drawApplicationMenuV31(){char w[8];boolTextV31(wifiUserEnabledV31,w,sizeof(w));const char* lab[]={"WI-FI","PHONE LINK","FIRMWARE UPDATE","CONNECTION INFO"};const char* val[]={w,"CONNECT / SYNC","UPDATE FROM PHONE","IP / STATUS"};drawMenuRowsV31("APPLICATION",lab,val,4,applicationSelection);}
-static void drawWifiV31(){drawBaseV31("WI-FI",wifiUserEnabledV31?"ON":"OFF");if(wifiUserEnabledV31){drawTextCenteredV31(160,81,"RS16_0016",C_V31_WHITE,2);drawTextCenteredV31(160,111,"IP 192.168.4.1",C_V31_BLUE,1);char c[24];snprintf(c,sizeof(c),"CLIENT %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,139,c,C_V31_TEXT,1);{char pw[40];snprintf(pw,sizeof(pw),"PASSWORD %s",apPassV36.c_str());drawTextCenteredV31(160,169,pw,C_V31_GRAY,1);}}else{drawTextCenteredV31(160,102,"WI-FI OFF",C_V31_GRAY,2);drawTextCenteredV31(160,139,"WI-FI AVAILABLE",C_V31_BLUE,1);}drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
+static void drawWifiV31(){drawBaseV31("WI-FI",wifiUserEnabledV31?"ON":"OFF");if(wifiUserEnabledV31){drawTextCenteredV31(160,81,"RS16_0016",C_V31_WHITE,2);drawTextCenteredV31(160,111,"IP 192.168.4.1",C_V31_BLUE,1);char c[24];snprintf(c,sizeof(c),"CLIENT %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,139,c,C_V31_TEXT,1);drawTextCenteredV31(160,169,ownerPassSetV36()?"SANDI AKTIF":"TANPA SANDI - ATUR DI /SANDI",ownerPassSetV36()?C_V31_GREEN:C_V31_GRAY,1);}else{drawTextCenteredV31(160,102,"WI-FI OFF",C_V31_GRAY,2);drawTextCenteredV31(160,139,"WI-FI AVAILABLE",C_V31_BLUE,1);}drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
 static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"WIFI OFF");drawTextCenteredV31(160,82,"RS16 PHONE CONNECTION",C_V31_WHITE,2);drawTextCenteredV31(160,122,wifiUserEnabledV31?"CONNECT TO RS16_0016":"ENABLE WI-FI FIRST",C_V31_BLUE,1);drawTextCenteredV31(160,147,"LOG: 192.168.4.1/LOGS",C_V31_TEXT,1);drawTextCenteredV31(160,177,"OTA: POST /UPDATE",C_V31_TEXT,1);drawTextCenteredV31(160,218,"CONNECTION READY",C_V31_GRAY,1);}
 static void drawOtaV31(){drawBaseV31("FIRMWARE UPDATE",otaInProgressV31?"UPDATING":"READY");if(!wifiUserEnabledV31)drawTextCenteredV31(160,92,"WI-FI WILL START",C_V31_BLUE,2);else{char b[30];snprintf(b,sizeof(b),"RECEIVED %lu BYTES",(unsigned long)otaBytesV31);drawTextCenteredV31(160,91,"POST FIRMWARE TO /UPDATE",C_V31_WHITE,1);drawTextCenteredV31(160,123,b,C_V31_TEXT,1);}drawTextCenteredV31(160,165,"192.168.4.1",C_V31_BLUE,2);drawTextCenteredV31(160,206,otaInProgressV31?"DO NOT POWER OFF":"UPDATE READY",otaInProgressV31?C_V31_RED:C_V31_GRAY,1);}
 static void drawConnectionV31(){drawBaseV31("CONNECTION INFO",wifiUserEnabledV31?"ONLINE":"OFFLINE");char a[30],b[30],c[30];snprintf(a,sizeof(a),"WI-FI %s",wifiUserEnabledV31?"ON":"OFF");snprintf(b,sizeof(b),"CLIENT %u",wifiUserEnabledV31?WiFi.softAPgetStationNum():0);snprintf(c,sizeof(c),"OTA BYTES %lu",(unsigned long)otaBytesV31);drawTextV31(34,84,a,C_V31_WHITE,1);drawTextV31(34,115,"SSID RS16_0016",C_V31_WHITE,1);drawTextV31(34,146,"IP 192.168.4.1",C_V31_WHITE,1);drawTextV31(34,177,b,C_V31_WHITE,1);drawTextV31(34,208,c,C_V31_BLUE,1);}
@@ -17879,8 +17918,8 @@ static void serviceGpsRecoveryV32(){
 
 static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();
   // V36.3: ganti kredensial tanpa compile ulang (disimpan NVS). Wi-Fi/OTA min 8 karakter.
-  else if(cmd.startsWith("wifipass ")){String v=cmd.substring(9);v.trim();if(v.length()>=8&&v.length()<=63){apPassV36=v;prefsV31.putString("appw",v.c_str());Serial.println("WIFI PASS OK (berlaku saat Wi-Fi dinyalakan ulang)");}else Serial.println("WIFI PASS: 8-63 karakter");}
-  else if(cmd.startsWith("otapass ")){String v=cmd.substring(8);v.trim();if(v.length()>=8){otaPassV36=v;prefsV31.putString("otap",v.c_str());Serial.println("OTA PASS OK");}else Serial.println("OTA PASS: min 8 karakter");}
+  else if(cmd=="wifipass off"){apPassV36="";prefsV31.remove("appw");wifiApRestartAtV36=millis()+200;Serial.println("WIFI SANDI DIHAPUS (terbuka)");}
+  else if(cmd.startsWith("wifipass ")){String v=cmd.substring(9);v.trim();if(v.length()>=8&&v.length()<=63){apPassV36=v;prefsV31.putString("appw",v.c_str());wifiApRestartAtV36=millis()+200;Serial.println("WIFI SANDI OK (juga untuk OTA & log)");}else Serial.println("WIFI SANDI: 8-63 karakter, atau 'wifipass off'");}
   else if(cmd.startsWith("otauser ")){String v=cmd.substring(8);v.trim();if(v.length()>=1){otaUserV36=v;prefsV31.putString("otau",v.c_str());Serial.println("OTA USER OK");}}
   else if(cmd=="flash")Serial.printf("FLASH LOG %s JEDEC=%06lX USED=%lu (%u%%) SESI=%u NAK=%u\n",flashReadyV36?"OK":"OFF",(unsigned long)flashJedecV36,(unsigned long)flogWriteAddrV36,(unsigned)flogUsedPctV36(),(unsigned)flogSessionV36,(unsigned)gpsCfgNakCountV36);
   cmd="";}else if(cmd.length()<64)cmd+=c;}}
