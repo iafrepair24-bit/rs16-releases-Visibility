@@ -1,4 +1,18 @@
 /*
+  RS16 V36.3 (24 Okt 2026) -- perbaikan total hasil review:
+  GNSS : parser UBX resync kalau panjang paket rusak, ACK/NAK konfigurasi dibaca & ditampilkan,
+         dynamic model AUTOMOTIVE, UART1 output UBX saja, GNSS restart (hot) setelah ganti
+         konstelasi, cold start bisa diulang, lock lepas langsung saat PVT berhenti.
+  DRAG : sampel tanpa 3D fix tidak dipakai; celah data / sAcc jelek / fix turun -> run ditandai
+         dan TIDAK masuk BEST; trap speed; split NHRA 330 ft / 500 ft; rollout 1 ft hanya untuk
+         mode jarak & mode MPH (0-100 KPH standar tanpa rollout).
+  CIRCUIT: lintasan garis pertama hanya memulai lap (out-lap tidak lagi jadi LAP 1/BEST),
+         AUTO track tersimpan dipakai hanya kalau < 3 km, SET LINE manual (tahan RIGHT 2 dtk),
+         popup lap/sektor benar-benar tampil, sektor 3 + best sector + theoretical best,
+         delta live vs best lap (per 10 m), sisa jarak setelah garis tidak hilang.
+  LOGGER: log GNSS+IMU ke flash W25Q128 16 MB (U7), unduh lewat Wi-Fi /logs & /log.csv.
+  KEAMANAN: password Wi-Fi AP & OTA bisa diganti lewat Serial (wifipass / otapass).
+
   RS16 V36.2 UNIT KPH/MPH (24 Okt 2026):
   - Mode MPH sekarang punya target asli: 0-60 MPH (dulu "0-62 MPH" = konversi 100 km/h) dan
     0-100 MPH, checkpoint dalam MPH bulat. 0-SPEED-0 punya target MPH sendiri (NVS "s0tm").
@@ -211,6 +225,11 @@ static uint8_t gpsSatViewCnoV32[GPS_SAT_VIEW_MAX_V32] = {0};
 static uint8_t gpsSatViewGnssV32[GPS_SAT_VIEW_MAX_V32] = {0};
 static bool gpsSatViewUsedV32[GPS_SAT_VIEW_MAX_V32] = {false};
 
+// V36.3: hasil ACK/NAK konfigurasi UBX. Dulu tidak dibaca -> modul menolak CFG pun tidak ketahuan.
+static uint16_t gpsCfgAckCountV36 = 0, gpsCfgNakCountV36 = 0;
+static uint8_t gpsCfgLastNakClsV36 = 0, gpsCfgLastNakIdV36 = 0;
+static int32_t gpsLatRawV36 = 0, gpsLonRawV36 = 0;   // 1e-7 deg mentah dari NAV-PVT (untuk log flash)
+
 
 static uint16_t ubxU2V30(const uint8_t* p, uint16_t o) {
   return (uint16_t)p[o] | ((uint16_t)p[o + 1] << 8);
@@ -420,6 +439,23 @@ static inline uint8_t gnssRateHzV36(){ return gnssUpdateRateIdxV36 == 0 ? 10 : 2
 // dulu recovery ikut mengirim CFG-GNSS, padahal mengubah konfigurasi konstelasi bisa memicu
 // restart GNSS di modul (fix hilang lagi) tepat saat stream sedang bermasalah.
 static void configureGnssRateMsgsV36() {
+  gpsCfgAckCountV36 = 0; gpsCfgNakCountV36 = 0;
+  // V36.3: UART1 output UBX saja (dulu UBX+NMEA -> GNS/ZDA/TXT masih bisa ikut keluar). Baud tetap 115200.
+  {
+    const uint8_t prt[20] = {0x01,0x00,0x00,0x00, 0xD0,0x08,0x00,0x00, 0x00,0xC2,0x01,0x00,
+                             0x07,0x00, 0x01,0x00, 0x00,0x00, 0x00,0x00};
+    sendUbxV30(0x06, 0x00, prt, sizeof(prt));
+    delay(40);
+  }
+  // V36.3: dynamic model AUTOMOTIVE (dulu default PORTABLE, filter tidak cocok untuk kendaraan).
+  {
+    uint8_t nav5[36];
+    memset(nav5, 0, sizeof(nav5));
+    nav5[0] = 0x01;   // mask: dyn
+    nav5[2] = 4;      // dynModel 4 = automotive
+    sendUbxV30(0x06, 0x24, nav5, sizeof(nav5));
+    delay(20);
+  }
   // UBX-CFG-RATE mengikuti pilihan user: 100 ms (10 Hz) atau 40 ms (25 Hz).
   const uint16_t meas = (gnssUpdateRateIdxV36 == 0) ? 100 : 40;
   const uint8_t ratePayload[] = {(uint8_t)(meas & 0xFF), (uint8_t)(meas >> 8), 0x01, 0x00, 0x01, 0x00};
@@ -482,6 +518,10 @@ static void applyGnssSystemV36(){
     b[6]=(uint8_t)((flags>>16)&0xFF); b[7]=(uint8_t)((flags>>24)&0xFF);
   }
   sendUbxV30(0x06,0x3E,pl,sizeof(pl));
+  delay(60);
+  // V36.3: konstelasi baru baru aktif setelah GNSS restart. Hot start (navBbrMask=0) -> ephemeris
+  // dan konfigurasi RAM tetap, fix kembali dalam ~1-2 detik.
+  {const uint8_t rst[4]={0x00,0x00,0x02,0x00};sendUbxV30(0x06,0x04,rst,sizeof(rst));}
   Serial.printf("GNSS SYSTEM -> %s\n",GNSS_SYSTEM_NAME_V36[gnssSystemIdxV36<5?gnssSystemIdxV36:4]);
 }
 
@@ -524,6 +564,16 @@ static void updateGpsLockV30() {
 }
 
 static void handleUbxPacketV30(uint8_t cls, uint8_t id, const uint8_t* p, uint16_t len) {
+  if (cls == 0x05) {   // V36.3: ACK-ACK (id 0x01) / ACK-NAK (id 0x00) untuk pesan CFG
+    if (len >= 2 && p[0] == 0x06) {
+      if (id == 0x01) gpsCfgAckCountV36++;
+      else if (id == 0x00) {
+        gpsCfgNakCountV36++; gpsCfgLastNakClsV36 = p[0]; gpsCfgLastNakIdV36 = p[1];
+        Serial.printf("GNSS CFG NAK: class 0x%02X id 0x%02X\n", p[0], p[1]);
+      }
+    }
+    return;
+  }
   if (cls != 0x01) return;
 
   if (id == 0x07 && len >= 92) { // NAV-PVT
@@ -548,8 +598,10 @@ static void handleUbxPacketV30(uint8_t cls, uint8_t id, const uint8_t* p, uint16
     gpsFixTypeV30 = p[20];
     const uint8_t flags = p[21];
     gpsSatellitesV30 = p[23];
-    gpsLongitudeV30 = (double)ubxI4V30(p, 24) * 1e-7;
-    gpsLatitudeV30 = (double)ubxI4V30(p, 28) * 1e-7;
+    gpsLonRawV36 = ubxI4V30(p, 24);
+    gpsLatRawV36 = ubxI4V30(p, 28);
+    gpsLongitudeV30 = (double)gpsLonRawV36 * 1e-7;
+    gpsLatitudeV30 = (double)gpsLatRawV36 * 1e-7;
     gpsHorizontalAccuracyM_V30 = (float)ubxU4V30(p, 40) * 0.001f;
     gpsSpeedKmhV30 = (float)ubxI4V30(p, 60) * 0.0036f;
     if (gpsSpeedKmhV30 < 0.0f) gpsSpeedKmhV30 = 0.0f;
@@ -651,6 +703,9 @@ static void parseUbxByteV30(uint8_t b) {
     case UBX_LEN2_V30:
       ubxLenV30 |= ((uint16_t)b << 8); ubxChecksumAddV30(b);
       ubxPosV30 = 0; ubxStoreV30 = ubxLenV30 <= sizeof(ubxPayloadV30);
+      // V36.3: panjang di luar buffer = header rusak -> langsung cari sync lagi. Dulu parser
+      // "menelan" sampai 65535 byte (~5 detik stream) sebelum sadar paketnya sampah.
+      if (!ubxStoreV30) { gpsChecksumErrorsV30++; ubxStateV30 = UBX_SYNC1_V30; break; }
       ubxStateV30 = ubxLenV30 ? UBX_PAYLOAD_V30 : UBX_CKA_V30; break;
     case UBX_PAYLOAD_V30:
       if (ubxStoreV30 && ubxPosV30 < sizeof(ubxPayloadV30)) ubxPayloadV30[ubxPosV30] = b;
@@ -679,8 +734,10 @@ static void serviceGps25HzV30() {
   }
   // Release stale lock even when no packet arrives at all.
   if (gpsFixLockedV30 && millis() - gpsLastPvtMillisV30 > GPS_LOCK_RELEASE_MS_V30) {
+    // V36.3: PVT berhenti = lock langsung lepas (dulu masih menunggu GPS_LOCK_RELEASE kedua, total ~4 s).
     gpsFixRawV30 = false;
-    updateGpsLockV30();
+    gpsFixLockedV30 = false; gpsLockCandidateSinceV30 = 0; gpsLostSinceV30 = 0;
+    Serial.println("GNSS LOCK RELEASED (NO PVT)");
   }
   const uint32_t nowV31 = millis();
   if (gpsLastPvtMillisV30 != 0 && nowV31 - gpsLastPvtMillisV30 > 2500UL &&
@@ -15950,6 +16007,131 @@ static void serviceTelemetryV31(){
   telemetryPrevLatV31=gpsLatitudeV30;telemetryPrevLonV31=gpsLongitudeV30;telemetryPrevSpeedMpsV31=gpsSpeedKmhV30/3.6f;telemetryPrevTowV31=gpsITowMsV30;telemetryHavePrevV31=true;
 }
 
+// ============================================================
+// V36.3 LOG GNSS KE FLASH W25Q128 (U7, 16 MB, CS GPIO25, bus SPI bersama TFT/IMU)
+// Dulu logger hanya keluar ke Serial (pin microSD belum diketahui) -> tidak ada data tersimpan.
+// Format: record 32 byte berurutan dari alamat 0, tidak pernah wrap. Byte pertama = tipe
+// (0xA0 header sesi, 0xA1 data); 0xFF = kosong -> akhir log dicari dengan binary search saat boot.
+// Sektor 4 KB dihapus tepat sebelum record pertamanya ditulis. Unduh: Wi-Fi /logs dan /log.csv.
+// ============================================================
+#define FLASH_SIZE_V36   (16UL*1024UL*1024UL)
+#define FLASH_SECTOR_V36 4096UL
+#define FLOG_REC_V36     32U
+#define FLOG_TYPE_SESSION_V36 0xA0
+#define FLOG_TYPE_DATA_V36    0xA1
+static bool flashReadyV36=false;
+static uint32_t flashJedecV36=0;
+static uint32_t flogWriteAddrV36=0;
+static bool flogFullV36=false;
+static uint16_t flogSessionV36=0;
+static uint8_t flogPageBufV36[256];
+static uint32_t flogPageAddrV36=0xFFFFFFFFUL;
+static uint16_t flogBufStartV36=0,flogBufEndV36=0;
+
+static void flashSelV36(){lcdSPI.beginTransaction(SPISettings(20000000,MSBFIRST,SPI_MODE0));digitalWrite(FLASH_CS_PIN,LOW);}
+static void flashDeselV36(){digitalWrite(FLASH_CS_PIN,HIGH);lcdSPI.endTransaction();}
+static void flashCmdAddrV36(uint8_t cmd,uint32_t a){lcdSPI.transfer(cmd);lcdSPI.transfer((uint8_t)(a>>16));lcdSPI.transfer((uint8_t)(a>>8));lcdSPI.transfer((uint8_t)a);}
+static uint8_t flashStatusV36(){flashSelV36();lcdSPI.transfer(0x05);const uint8_t st=lcdSPI.transfer(0x00);flashDeselV36();return st;}
+static bool flashWaitV36(uint32_t timeoutMs){const uint32_t t0=millis();while(flashStatusV36()&0x01){if(millis()-t0>timeoutMs)return false;delayMicroseconds(50);}return true;}
+static void flashWriteEnableV36(){flashSelV36();lcdSPI.transfer(0x06);flashDeselV36();}
+static void flashReadV36(uint32_t a,uint8_t* buf,uint32_t n){flashSelV36();flashCmdAddrV36(0x03,a);lcdSPI.transferBytes(nullptr,buf,n);flashDeselV36();}   // data NULL = kirim 0xFF, baca blok (cepat)
+static bool flashEraseV36(uint8_t cmd,uint32_t a,uint32_t timeoutMs){flashWriteEnableV36();flashSelV36();flashCmdAddrV36(cmd,a);flashDeselV36();return flashWaitV36(timeoutMs);}
+static bool flashPageProgramV36(uint32_t a,const uint8_t* d,uint16_t n){
+  flashWriteEnableV36();flashSelV36();flashCmdAddrV36(0x02,a);for(uint16_t i=0;i<n;i++)lcdSPI.transfer(d[i]);flashDeselV36();
+  return flashWaitV36(20);
+}
+static uint8_t flogUsedPctV36(){return (uint8_t)((uint64_t)flogWriteAddrV36*100ULL/FLASH_SIZE_V36);}
+
+static void initFlashLogV36(){
+  flashSelV36();lcdSPI.transfer(0xAB);flashDeselV36();delayMicroseconds(50);   // release power-down (aman walau tidak tidur)
+  flashSelV36();lcdSPI.transfer(0x9F);const uint8_t m=lcdSPI.transfer(0),t=lcdSPI.transfer(0),c=lcdSPI.transfer(0);flashDeselV36();
+  flashJedecV36=((uint32_t)m<<16)|((uint32_t)t<<8)|c;
+  flashReadyV36=(m!=0x00&&m!=0xFF&&c==0x18);   // 0x18 = 128 Mbit (W25Q128 / kompatibel)
+  if(!flashReadyV36){Serial.printf("FLASH LOG: JEDEC %06lX tidak dikenal -> log flash OFF\n",(unsigned long)flashJedecV36);return;}
+  uint32_t lo=0,hi=FLASH_SIZE_V36/FLOG_REC_V36;
+  while(lo<hi){const uint32_t mid=(lo+hi)/2;uint8_t b=0xFF;flashReadV36(mid*FLOG_REC_V36,&b,1);if(b==0xFF)hi=mid;else lo=mid+1;}
+  flogWriteAddrV36=lo*FLOG_REC_V36;
+  flogFullV36=(flogWriteAddrV36+FLOG_REC_V36>FLASH_SIZE_V36);
+  flogSessionV36=prefsV31.getUShort("flses",0);
+  Serial.printf("FLASH LOG: JEDEC %06lX, terpakai %lu byte (%u%%), sesi terakhir %u\n",(unsigned long)flashJedecV36,(unsigned long)flogWriteAddrV36,(unsigned)flogUsedPctV36(),(unsigned)flogSessionV36);
+}
+static void flogFlushV36(){
+  if(!flashReadyV36||flogPageAddrV36==0xFFFFFFFFUL||flogBufEndV36<=flogBufStartV36)return;
+  if(!flashPageProgramV36(flogPageAddrV36+flogBufStartV36,flogPageBufV36+flogBufStartV36,flogBufEndV36-flogBufStartV36))Serial.println("FLASH PROGRAM TIMEOUT");
+  flogBufStartV36=flogBufEndV36;
+  if(flogBufEndV36>=256)flogPageAddrV36=0xFFFFFFFFUL;
+}
+static bool flogAppendV36(const uint8_t* rec){
+  if(!flashReadyV36||flogFullV36)return false;
+  if(flogWriteAddrV36+FLOG_REC_V36>FLASH_SIZE_V36){flogFlushV36();flogFullV36=true;Serial.println("FLASH LOG PENUH");return false;}
+  const uint32_t page=flogWriteAddrV36&~255UL;
+  if(page!=flogPageAddrV36){flogFlushV36();flogPageAddrV36=page;flogBufStartV36=flogBufEndV36=(uint16_t)(flogWriteAddrV36&255UL);}
+  if((flogWriteAddrV36%FLASH_SECTOR_V36)==0&&!flashEraseV36(0x20,flogWriteAddrV36,500)){Serial.println("FLASH ERASE GAGAL -> log flash OFF");flashReadyV36=false;return false;}
+  memcpy(flogPageBufV36+flogBufEndV36,rec,FLOG_REC_V36);flogBufEndV36+=FLOG_REC_V36;flogWriteAddrV36+=FLOG_REC_V36;
+  if(flogBufEndV36>=256)flogFlushV36();
+  return true;
+}
+static void flogPutU16V36(uint8_t* b,uint16_t v){b[0]=(uint8_t)v;b[1]=(uint8_t)(v>>8);}
+static void flogPutU32V36(uint8_t* b,uint32_t v){for(uint8_t i=0;i<4;i++)b[i]=(uint8_t)(v>>(8*i));}
+static uint16_t flogGetU16V36(const uint8_t* b){return (uint16_t)b[0]|((uint16_t)b[1]<<8);}
+static uint32_t flogGetU32V36(const uint8_t* b){return (uint32_t)b[0]|((uint32_t)b[1]<<8)|((uint32_t)b[2]<<16)|((uint32_t)b[3]<<24);}
+static uint16_t flogClampU16V36(float v){return v<=0.0f?0:(v>=65535.0f?65535:(uint16_t)(v+0.5f));}
+static int16_t flogClampI16V36(float v){return v<=-32768.0f?-32768:(v>=32767.0f?32767:(int16_t)lroundf(v));}
+static void flogStartSessionV36(){
+  if(!flashReadyV36)return;
+  flogSessionV36++;prefsV31.putUShort("flses",flogSessionV36);
+  uint8_t r[FLOG_REC_V36];memset(r,0,sizeof(r));
+  r[0]=FLOG_TYPE_SESSION_V36;flogPutU16V36(&r[1],flogSessionV36);r[3]=gnssRateHzV36();
+  flogPutU16V36(&r[4],gpsYearV30);r[6]=gpsMonthV30;r[7]=gpsDayV30;r[8]=gpsHourV30;r[9]=gpsMinuteV30;r[10]=gpsSecondV30;r[11]=gpsDateTimeValidV30?1:0;
+  flogPutU32V36(&r[12],gpsITowMsV30);
+  flogAppendV36(r);
+}
+static void flogWriteSampleV36(){
+  if(!flashReadyV36)return;
+  uint8_t r[FLOG_REC_V36];
+  r[0]=FLOG_TYPE_DATA_V36;r[1]=gpsFixTypeV30;r[2]=gpsSatellitesV30;r[3]=imuConnectedV31?1:0;
+  flogPutU32V36(&r[4],gpsITowMsV30);
+  flogPutU32V36(&r[8],(uint32_t)gpsLatRawV36);flogPutU32V36(&r[12],(uint32_t)gpsLonRawV36);
+  flogPutU16V36(&r[16],flogClampU16V36(gpsSpeedKmhV30/0.036f));                 // cm/s
+  float hd=fmodf(gpsHeadingDegV30,360.0f);if(hd<0)hd+=360.0f;flogPutU16V36(&r[18],flogClampU16V36(hd*100.0f));
+  flogPutU16V36(&r[20],flogClampU16V36(gpsHorizontalAccuracyM_V30*100.0f));     // cm
+  flogPutU16V36(&r[22],flogClampU16V36(gpsSpeedAccuracyKmhV30/0.036f));         // cm/s
+  flogPutU16V36(&r[24],(uint16_t)flogClampI16V36(imuAxV31*1000.0f));            // mg
+  flogPutU16V36(&r[26],(uint16_t)flogClampI16V36(imuAyV31*1000.0f));
+  flogPutU16V36(&r[28],(uint16_t)flogClampI16V36(imuAzV31*1000.0f));
+  flogPutU16V36(&r[30],(uint16_t)flogClampI16V36(imuGzV31*10.0f));              // 0,1 dps
+  flogAppendV36(r);
+}
+// Hapus log: blok 64 KB yang pernah terpakai saja (jauh lebih cepat dari chip erase 40-200 s).
+static void flogEraseAllV36(){
+  if(!flashReadyV36)return;
+  flogFlushV36();
+  for(uint32_t a=0;a<flogWriteAddrV36;a+=65536UL){if(!flashEraseV36(0xD8,a,3000)){Serial.println("FLASH BLOCK ERASE TIMEOUT");break;}}
+  flogWriteAddrV36=0;flogFullV36=false;flogPageAddrV36=0xFFFFFFFFUL;flogBufStartV36=flogBufEndV36=0;
+  flogSessionV36=0;prefsV31.putUShort("flses",0);
+  Serial.println("FLASH LOG DIHAPUS");
+}
+// Daftar sesi (maks 64 terakhir) hasil scan tipe record.
+struct FlogSessionV36{uint16_t no;uint32_t addr,recs;uint8_t hdr[16];};
+static const uint8_t FLOG_LIST_MAX_V36=64;
+static FlogSessionV36 flogListV36[FLOG_LIST_MAX_V36];
+static uint8_t flogListCountV36=0;
+static void flogScanSessionsV36(){
+  flogListCountV36=0;if(!flashReadyV36)return;
+  flogFlushV36();
+  static uint8_t buf[1024];int16_t cur=-1;
+  for(uint32_t a=0;a<flogWriteAddrV36;a+=sizeof(buf)){
+    const uint32_t n=min((uint32_t)sizeof(buf),flogWriteAddrV36-a);flashReadV36(a,buf,n);
+    for(uint32_t o=0;o+FLOG_REC_V36<=n;o+=FLOG_REC_V36){
+      if(buf[o]==FLOG_TYPE_SESSION_V36){
+        if(flogListCountV36==FLOG_LIST_MAX_V36){memmove(&flogListV36[0],&flogListV36[1],sizeof(FlogSessionV36)*(FLOG_LIST_MAX_V36-1));flogListCountV36--;}
+        cur=flogListCountV36++;FlogSessionV36& e=flogListV36[cur];e.no=flogGetU16V36(&buf[o+1]);e.addr=a+o;e.recs=0;memcpy(e.hdr,&buf[o],16);
+      }else if(buf[o]==FLOG_TYPE_DATA_V36&&cur>=0)flogListV36[cur].recs++;
+    }
+    if((a&0xFFFF)==0)delay(0);
+  }
+}
+
 // ---------- microSD optional backend + serial CSV always real ----------
 #if RS16_SD_ENABLED
 SPIClass sdSpiV31(HSPI); static bool sdReadyV31=false; static File sdLogV31;
@@ -15974,6 +16156,7 @@ static void closeLoggerFileV31(){
 #endif
 }
 static void writeLoggerRowV31(){
+  flogWriteSampleV36();   // V36.3 simpan ke flash
   char row[220];snprintf(row,sizeof(row),"%lu,%.7f,%.7f,%.3f,%.2f,%.2f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f",(unsigned long)gpsITowMsV30,gpsLatitudeV30,gpsLongitudeV30,gpsSpeedKmhV30,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31);Serial.println(row);
 #if RS16_SD_ENABLED
   if(sdLogV31){sdLogV31.println(row);if((gpsPvtSequenceV30&31U)==0)sdLogV31.flush();}
@@ -15981,7 +16164,13 @@ static void writeLoggerRowV31(){
 }
 
 // ---------- Drag real engine ----------
-struct DragRuntimeV31{bool motionSeen,timingStarted,finished;uint32_t motionTow,startTow,prevTow,lastSeq,totalMs;double prevLat,prevLon;bool prevPosValid;float rawDistanceM,prevRawDistanceM,maxSpeedKmh,prevSpeedKmh;uint8_t reached;uint32_t checkpointMs[4];};
+struct DragRuntimeV31{bool motionSeen,timingStarted,finished;uint32_t motionTow,startTow,prevTow,lastSeq,totalMs;double prevLat,prevLon;bool prevPosValid;float rawDistanceM,prevRawDistanceM,maxSpeedKmh,prevSpeedKmh;uint8_t reached;uint32_t checkpointMs[4];
+  uint8_t quality;uint32_t maxGapMs;float trapSpeedKmh;};   // V36.3: kualitas run + trap speed
+// V36.3 bit kualitas run. Run dengan bit != 0 tetap ditampilkan & jadi LAST, tapi TIDAK jadi BEST.
+#define DRAG_Q_GAP_V36 0x01   // celah data GNSS > 2,5x periode sampel
+#define DRAG_Q_ACC_V36 0x02   // akurasi kecepatan (sAcc) > 2 km/h saat timing
+#define DRAG_Q_FIX_V36 0x04   // fix turun di bawah 3D saat timing
+static const char* dragQualityTextV36(uint8_t q){return (q&DRAG_Q_FIX_V36)?"NO 3D FIX":(q&DRAG_Q_GAP_V36)?"GPS GAP":(q&DRAG_Q_ACC_V36)?"LOW ACCURACY":"";}
 // FIX 6 Sep 2026: racePhaseStartedMsV31 & raceCountdownPhaseV31 DIHAPUS -- sisa hitungan mundur
 // 3-2-1 yang sudah dihapus total; kedua variabel ini tidak pernah dibaca/ditulis lagi di mana pun.
 static DragRuntimeV31 dragRtV31={};
@@ -16010,8 +16199,9 @@ static float dragFinishSpeedV31(){
 static bool dragCheckpointsAreSpeedV31(){return selectedDragMode==DRAG_0_100||selectedDragMode==DRAG_0_200||selectedDragMode==DRAG_0_SPEED_0;}
 static float speed0TargetV36(){return spdFromDispV36((float)speed0TargetDispV36());}
 static void dragTargetsV31(float o[4]){
-  if(selectedDragMode==DRAG_QUARTER){o[0]=18.288f;o[1]=100.0f;o[2]=201.168f;o[3]=402.336f;}
-  else if(selectedDragMode==DRAG_EIGHTH){o[0]=18.288f;o[1]=100.0f;o[2]=150.0f;o[3]=201.168f;}
+  // V36.3: split standar NHRA -- 60 ft, 330 ft (100,584 m), 500 ft (152,4 m), 1/8 & 1/4 mile.
+  if(selectedDragMode==DRAG_QUARTER){o[0]=18.288f;o[1]=100.584f;o[2]=201.168f;o[3]=402.336f;}
+  else if(selectedDragMode==DRAG_EIGHTH){o[0]=18.288f;o[1]=100.584f;o[2]=152.4f;o[3]=201.168f;}
   else if(selectedDragMode==DRAG_60FT){o[0]=18.288f;o[1]=o[2]=o[3]=0.0f;}
   else if(selectedDragMode==DRAG_CUSTOM){for(uint8_t i=0;i<4;i++)o[i]=(float)customPointM[i];}
   else if(selectedDragMode==DRAG_0_100){
@@ -16027,7 +16217,7 @@ static void dragTargetsV31(float o[4]){
 static void dragTargetLabelV31(float target,char* out,size_t n){
   if(target<=0.0f){snprintf(out,n,"--");return;}
   if(dragCheckpointsAreSpeedV31())snprintf(out,n,"%.0f %s",spdDispV36(target),spdUnitV36());
-  else if(unitMphV31)snprintf(out,n,"%.0f FT",distDispV36(target));
+  else if(selectedDragMode!=DRAG_CUSTOM)snprintf(out,n,"%.0f FT",target*3.280840f);   // drag standar selalu dalam feet
   else if(fabsf(target-roundf(target))<0.02f)snprintf(out,n,"%.0f M",target);
   else snprintf(out,n,"%.3f M",target);
 }
@@ -16052,11 +16242,12 @@ static void finishDragV31(bool completed=true){
     if(m<DRAG_CMP_SLOTS_V36){
       DragCompareV36 cur; for(uint8_t i=0;i<4;i++)cur.cp[i]=dragRtV31.checkpointMs[i]; cur.total=dragRtV31.totalMs;
       dragLastV36[m]=cur;
-      if(dragBestV36[m].total==0 || cur.total<dragBestV36[m].total) dragBestV36[m]=cur;
+      // V36.3: run dengan data GNSS bermasalah tidak boleh jadi rekor
+      if(dragRtV31.quality==0 && (dragBestV36[m].total==0 || cur.total<dragBestV36[m].total)) dragBestV36[m]=cur;
       saveCompareV36();
     }
   }
-  Serial.printf("DRAG FINISH,%s,%lu,%.2f,%.2f\n",dragModeNameV31(),(unsigned long)dragRtV31.totalMs,dragRtV31.rawDistanceM,dragRtV31.maxSpeedKmh);
+  Serial.printf("DRAG FINISH,%s,%lu,%.2f,%.2f,trap=%.2f,q=0x%02X,gap=%lu\n",dragModeNameV31(),(unsigned long)dragRtV31.totalMs,dragRtV31.rawDistanceM,dragRtV31.maxSpeedKmh,dragRtV31.trapSpeedKmh,(unsigned)dragRtV31.quality,(unsigned long)dragRtV31.maxGapMs);
 }
 // V36.2 engine drag:
 // - Jarak = integrasi kecepatan Doppler GNSS (trapesium, dt dari iTOW). Dulu jarak dijumlah dari
@@ -16068,19 +16259,26 @@ static void finishDragV31(bool completed=true){
 // - Tanpa rollout: waktu start diinterpolasi tepat saat kecepatan melewati 1 km/h.
 static bool dragStillV36=false;
 static uint32_t dragStillTowV36=0;
+// V36.3: rollout 1 ft = konvensi drag strip (mode jarak) & 0-60 MPH. 0-100/0-200 KPH standar tanpa rollout.
+static bool dragUseRolloutV36(){return dragRolloutEnabled&&(!dragCheckpointsAreSpeedV31()||unitMphV31);}
 static void serviceDragV31(){
   if(uiTestScreen!=UI_DRAG_RUNNING||dragRtV31.lastSeq==gpsPvtSequenceV30)return;
-  if(gpsLastPvtMillisV30==0||millis()-gpsLastPvtMillisV30>1000UL||!gpsFixRawV30||gpsFixTypeV30<2)return;
+  if(gpsLastPvtMillisV30==0||millis()-gpsLastPvtMillisV30>1000UL)return;
   dragRtV31.lastSeq=gpsPvtSequenceV30;
+  // V36.3: sampel tanpa 3D fix tidak dipakai (dulu 2D fix ikut dihitung). Kalau terjadi saat timing,
+  // run ditandai -> tidak masuk BEST. Sampel berikutnya terintegrasi melewati celah ini (dan ditandai GAP).
+  if(!gpsFixRawV30||gpsFixTypeV30<3){if(dragRtV31.timingStarted)dragRtV31.quality|=DRAG_Q_FIX_V36;return;}
   float sp=gpsSpeedKmhV30; if(sp<0.5f)sp=0.0f;
   if(sp>dragRtV31.maxSpeedKmh)dragRtV31.maxSpeedKmh=sp;
   const uint32_t tow=gpsITowMsV30;
+  const bool roll=dragUseRolloutV36();
+  const float rollM=roll?0.3048f:0.0f;
 
   if(!dragRtV31.motionSeen){
     if(sp<1.0f){dragRtV31.prevTow=tow;dragRtV31.prevSpeedKmh=sp;dragRtV31.prevPosValid=true;return;}
     dragRtV31.motionSeen=true;dragRtV31.motionTow=tow;dragStillV36=false;
     if(!dragRtV31.prevPosValid){dragRtV31.prevTow=tow;dragRtV31.prevSpeedKmh=sp;dragRtV31.prevPosValid=true;}
-    if(!dragRolloutEnabled){
+    if(!roll){
       const float den=sp-dragRtV31.prevSpeedKmh;
       const float r=den>0.001f?(1.0f-dragRtV31.prevSpeedKmh)/den:1.0f;
       dragRtV31.startTow=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);
@@ -16092,8 +16290,16 @@ static void serviceDragV31(){
   dragRtV31.prevRawDistanceM=dragRtV31.rawDistanceM;
   {
     const uint32_t dt=gpsTowDeltaMsV30(tow,dragRtV31.prevTow);
-    if(dt>0&&dt<500UL)dragRtV31.rawDistanceM+=(dragRtV31.prevSpeedKmh+sp)*0.5f/3.6f*(dt*0.001f);
+    const uint32_t nominal=1000UL/gnssRateHzV36();
+    // V36.3: celah tidak lagi dibuang diam-diam (dulu dt>=500 ms = jarak hilang -> finish telat,
+    // waktu terlalu lama). Celah s/d 3 s diintegrasi linear, dan run ditandai GAP kalau > 2,5x periode.
+    if(dt>0&&dt<=3000UL)dragRtV31.rawDistanceM+=(dragRtV31.prevSpeedKmh+sp)*0.5f/3.6f*(dt*0.001f);
+    if(dragRtV31.timingStarted){
+      if(dt>dragRtV31.maxGapMs)dragRtV31.maxGapMs=dt;
+      if(dt>nominal*5UL/2UL)dragRtV31.quality|=DRAG_Q_GAP_V36;
+    }
   }
+  if(dragRtV31.timingStarted&&gpsSpeedAccuracyKmhV30>2.0f)dragRtV31.quality|=DRAG_Q_ACC_V36;
 
   if(!dragRtV31.timingStarted){
     if(sp<=0.0f){
@@ -16104,14 +16310,14 @@ static void serviceDragV31(){
     }else dragStillV36=false;
   }
 
-  if(!dragRtV31.timingStarted&&dragRolloutEnabled&&dragRtV31.rawDistanceM>=0.3048f){
+  if(!dragRtV31.timingStarted&&roll&&dragRtV31.rawDistanceM>=rollM){
     const float den=dragRtV31.rawDistanceM-dragRtV31.prevRawDistanceM;
-    const float r=den>0.0001f?(0.3048f-dragRtV31.prevRawDistanceM)/den:1.0f;
+    const float r=den>0.0001f?(rollM-dragRtV31.prevRawDistanceM)/den:1.0f;
     dragRtV31.startTow=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);
     dragRtV31.timingStarted=true;
   }
-  const float prevD=max(0.0f,dragRtV31.prevRawDistanceM-(dragRolloutEnabled?0.3048f:0));
-  const float d=max(0.0f,dragRtV31.rawDistanceM-(dragRolloutEnabled?0.3048f:0));
+  const float prevD=max(0.0f,dragRtV31.prevRawDistanceM-rollM);
+  const float d=max(0.0f,dragRtV31.rawDistanceM-rollM);
   if(dragRtV31.timingStarted){
     float t[4];dragTargetsV31(t);
     if(dragCheckpointsAreSpeedV31()){
@@ -16122,24 +16328,40 @@ static void serviceDragV31(){
       if(selectedDragMode==DRAG_0_SPEED_0){
         // fase 2: setelah target speed tercapai, timing berhenti saat kendaraan balik ke 0
         if(dragRtV31.reached>=1){
-          if(sp<=1.0f){ if(++speed0ZeroCountV36>=2){ finishDragV31(true); return; } }
+          if(sp<=1.0f){ if(++speed0ZeroCountV36>=2){ dragRtV31.trapSpeedKmh=dragRtV31.maxSpeedKmh; finishDragV31(true); return; } }
           else speed0ZeroCountV36=0;
         }
       }
       const float finS=dragFinishSpeedV31();
-      if(finS>0&&dragRtV31.prevSpeedKmh<finS&&sp>=finS){const float den=sp-dragRtV31.prevSpeedKmh;const float r=den>0.001f?(finS-dragRtV31.prevSpeedKmh)/den:1.0f;const uint32_t save=gpsITowMsV30;gpsITowMsV30=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);finishDragV31(true);gpsITowMsV30=save;return;}
+      if(finS>0&&dragRtV31.prevSpeedKmh<finS&&sp>=finS){const float den=sp-dragRtV31.prevSpeedKmh;const float r=den>0.001f?(finS-dragRtV31.prevSpeedKmh)/den:1.0f;dragRtV31.trapSpeedKmh=finS;const uint32_t save=gpsITowMsV30;gpsITowMsV30=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);finishDragV31(true);gpsITowMsV30=save;return;}
     }else{
       const float finD=dragFinishDistanceV31();
       while(dragRtV31.reached<4 && t[dragRtV31.reached]>0.0f && t[dragRtV31.reached]<=finD+0.001f && d>=t[dragRtV31.reached]){const float den=d-prevD;const float r=den>0.0001f?(t[dragRtV31.reached]-prevD)/den:1.0f;const uint32_t ct=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);dragRtV31.checkpointMs[dragRtV31.reached]=gpsTowDeltaMsV30(ct,dragRtV31.startTow);dragRtV31.reached++;}
-      if(finD>0&&d>=finD){const float den=d-prevD;const float r=den>0.0001f?(finD-prevD)/den:1.0f;const uint32_t save=gpsITowMsV30;gpsITowMsV30=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);finishDragV31(true);gpsITowMsV30=save;return;}
+      if(finD>0&&d>=finD){
+        const float den=d-prevD;const float r=den>0.0001f?(finD-prevD)/den:1.0f;
+        // V36.3 trap speed = kecepatan tepat di garis finish (interpolasi), seperti timing slip drag strip
+        dragRtV31.trapSpeedKmh=dragRtV31.prevSpeedKmh+(sp-dragRtV31.prevSpeedKmh)*constrain(r,0.0f,1.0f);
+        const uint32_t save=gpsITowMsV30;gpsITowMsV30=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);finishDragV31(true);gpsITowMsV30=save;return;
+      }
     }
   }
   dragRtV31.prevTow=tow;dragRtV31.prevLat=gpsLatitudeV30;dragRtV31.prevLon=gpsLongitudeV30;dragRtV31.prevPosValid=true;dragRtV31.prevSpeedKmh=sp;
 }
 
 // ---------- Circuit real lap/sector engine ----------
-struct CircuitRuntimeV31{bool active,lineSet,seenFar,havePrevAlong,havePrevPos;uint32_t lastSeq,lapStartTow,lastLapMs,bestLapMs;uint16_t lapCount;double startLat,startLon,prevLat,prevLon;float startHeadingDeg,prevAlongM,lapDistanceM,learnedLapDistanceM,maxSpeed;uint8_t sectorIndex;uint32_t sectorMs[3];uint32_t popupUntil;uint8_t popupType;};
+struct CircuitRuntimeV31{bool active,lineSet,seenFar,havePrevAlong,havePrevPos;uint32_t lastSeq,lapStartTow,lastLapMs,bestLapMs;uint16_t lapCount;double startLat,startLon,prevLat,prevLon;float startHeadingDeg,prevAlongM,lapDistanceM,learnedLapDistanceM,maxSpeed;uint8_t sectorIndex;uint32_t sectorMs[3];uint32_t popupUntil;uint8_t popupType;
+  bool lapArmed;uint32_t lastSecMs[3],bestSecMs[3];};   // V36.3: lap baru dihitung setelah garis dilewati; durasi per sektor
 static CircuitRuntimeV31 circuitRtV31={};
+// V36.3 popup circuit (dulu popupType di-set tapi tidak pernah digambar)
+#define CIRCUIT_POPUP_SECTOR_V36 1
+#define CIRCUIT_POPUP_LAP_V36 2
+#define CIRCUIT_POPUP_START_V36 3
+#define CIRCUIT_POPUP_LINE_V36 4
+// V36.3 delta live vs best lap: waktu lap dicatat tiap 10 m jarak (lap s/d 8 km).
+static const uint16_t LAP_REF_MAX_V36=800;
+static const float LAP_REF_STEP_M_V36=10.0f;
+static uint32_t lapRefCurV36[LAP_REF_MAX_V36],lapRefBestV36[LAP_REF_MAX_V36];
+static uint16_t lapRefCurCountV36=0,lapRefBestCountV36=0;
 // V36.2 TRACK PATH nyata: posisi (meter timur/utara relatif garis start) disimpan tiap >=8 m.
 // Kalau penuh, titik dirapatkan (ambil selang-seling) dan jarak minimum digandakan.
 static const uint16_t TRACK_PATH_MAX_V36=160;
@@ -16160,7 +16382,7 @@ static void trackPathAddV36(float east,float north){
   trackPathYV36[trackPathCountV36]=(int16_t)constrain(north,-32000.0f,32000.0f);
   trackPathCountV36++;
 }
-static void circuitResetV31(bool clearLine=true){double slat=circuitRtV31.startLat,slon=circuitRtV31.startLon;float sh=circuitRtV31.startHeadingDeg,learn=circuitRtV31.learnedLapDistanceM;bool had=circuitRtV31.lineSet&&!clearLine;memset(&circuitRtV31,0,sizeof(circuitRtV31));circuitRtV31.bestLapMs=0xFFFFFFFFUL;circuitRtV31.active=true;circuitRtV31.lastSeq=gpsPvtSequenceV30;if(had){circuitRtV31.lineSet=true;circuitRtV31.startLat=slat;circuitRtV31.startLon=slon;circuitRtV31.startHeadingDeg=sh;circuitRtV31.learnedLapDistanceM=learn;circuitRtV31.lapStartTow=gpsITowMsV30;}
+static void circuitResetV31(bool clearLine=true){double slat=circuitRtV31.startLat,slon=circuitRtV31.startLon;float sh=circuitRtV31.startHeadingDeg,learn=circuitRtV31.learnedLapDistanceM;bool had=circuitRtV31.lineSet&&!clearLine;memset(&circuitRtV31,0,sizeof(circuitRtV31));circuitRtV31.bestLapMs=0xFFFFFFFFUL;for(uint8_t i=0;i<3;i++){circuitRtV31.lastSecMs[i]=circuitRtV31.bestSecMs[i]=0xFFFFFFFFUL;}lapRefCurCountV36=lapRefBestCountV36=0;circuitRtV31.active=true;circuitRtV31.lastSeq=gpsPvtSequenceV30;if(had){circuitRtV31.lineSet=true;circuitRtV31.startLat=slat;circuitRtV31.startLon=slon;circuitRtV31.startHeadingDeg=sh;circuitRtV31.learnedLapDistanceM=learn;circuitRtV31.lapStartTow=gpsITowMsV30;}
   trackPathCountV36=0;trackPathMinStepV36=8.0f;circuitHavePrevTowV36=false;circuitPrevSpV36=0;resetTelemetryV31();}
 static void saveTrackV31(){
   if(!circuitRtV31.lineSet)return; prefsV31.putBool("trk",true);
@@ -16179,6 +16401,17 @@ static bool loadTrackV31(){
 // V36.2: jarak lap dari integrasi kecepatan Doppler (bukan jitter posisi), waktu lap diinterpolasi
 // tepat di garis start/finish (dulu dibulatkan ke sampel GNSS terdekat: error s/d 40-100 ms per lap),
 // best lap disimpan ke NVS untuk HISTORY.
+static void circuitStartLapV36(uint32_t tow,float carryM){
+  circuitRtV31.lapArmed=true;circuitRtV31.lapStartTow=tow;circuitRtV31.lapDistanceM=carryM;
+  circuitRtV31.sectorIndex=0;circuitRtV31.seenFar=false;
+  lapRefCurV36[0]=0;lapRefCurCountV36=1;
+}
+// V36.3 perubahan engine circuit:
+// - Lintasan garis PERTAMA saat garis sudah ada (track tersimpan / reset) hanya MEMULAI lap.
+//   Dulu waktu dihitung dari saat sesi dibuka, sehingga out-lap (dari pit / tengah sirkuit)
+//   tercatat sebagai LAP 1 -- dan kalau pendek, jadi BEST permanen di NVS.
+// - Sisa jarak setelah garis dibawa ke lap berikutnya (dulu hilang beberapa meter tiap lap).
+// - Durasi sektor S1/S2/S3 + best sector, referensi delta per 10 m.
 static void serviceCircuitV31(){
   if(!circuitRtV31.active||uiTestScreen!=UI_CIRCUIT_RUNNING||!gpsTimingReadyV31()||circuitRtV31.lastSeq==gpsPvtSequenceV30)return;circuitRtV31.lastSeq=gpsPvtSequenceV30;
   const float sp=gpsSpeedKmhV30<0.5f?0.0f:gpsSpeedKmhV30;
@@ -16186,41 +16419,98 @@ static void serviceCircuitV31(){
   if(sp>circuitRtV31.maxSpeed)circuitRtV31.maxSpeed=sp;
   if(!circuitRtV31.lineSet){
     if(sp<5)return;
-    circuitRtV31.lineSet=true;circuitRtV31.startLat=gpsLatitudeV30;circuitRtV31.startLon=gpsLongitudeV30;circuitRtV31.startHeadingDeg=gpsHeadingDegV30;circuitRtV31.lapStartTow=tow;
-    circuitRtV31.havePrevAlong=true;circuitRtV31.prevAlongM=0;circuitPrevTowV36=tow;circuitPrevSpV36=sp;circuitHavePrevTowV36=true;saveTrackV31();return;
+    circuitRtV31.lineSet=true;circuitRtV31.startLat=gpsLatitudeV30;circuitRtV31.startLon=gpsLongitudeV30;circuitRtV31.startHeadingDeg=gpsHeadingDegV30;
+    circuitRtV31.havePrevAlong=true;circuitRtV31.prevAlongM=0;circuitPrevTowV36=tow;circuitPrevSpV36=sp;circuitHavePrevTowV36=true;
+    circuitStartLapV36(tow,0.0f);   // kendaraan tepat di garis yang baru dibuat
+    circuitRtV31.popupType=CIRCUIT_POPUP_LINE_V36;circuitRtV31.popupUntil=millis()+1500;screenDirtyV31=true;
+    saveTrackV31();return;
   }
-  if(circuitHavePrevTowV36){const uint32_t dt=gpsTowDeltaMsV30(tow,circuitPrevTowV36);if(dt>0&&dt<500UL)circuitRtV31.lapDistanceM+=(circuitPrevSpV36+sp)*0.5f/3.6f*(dt*0.001f);}
+  float stepD=0.0f;uint32_t stepDt=0;
+  if(circuitHavePrevTowV36){stepDt=gpsTowDeltaMsV30(tow,circuitPrevTowV36);if(stepDt>0&&stepDt<=3000UL)stepD=(circuitPrevSpV36+sp)*0.5f/3.6f*(stepDt*0.001f);}
   else{circuitPrevTowV36=tow;circuitPrevSpV36=sp;circuitHavePrevTowV36=true;}
-  if(!circuitManualSectorV36&&circuitRtV31.learnedLapDistanceM>50&&circuitRtV31.sectorIndex<2){float target=circuitRtV31.learnedLapDistanceM*(circuitRtV31.sectorIndex==0?0.333333f:0.666667f);if(circuitRtV31.lapDistanceM>=target){circuitRtV31.sectorMs[circuitRtV31.sectorIndex]=gpsTowDeltaMsV30(tow,circuitRtV31.lapStartTow);circuitRtV31.sectorIndex++;if(circuitSectorPopupV31){circuitRtV31.popupType=1;circuitRtV31.popupUntil=millis()+1200;screenDirtyV31=true;}if(circuitBeepV31)buzzerPlayV31(1900,90);}}
+  circuitRtV31.lapDistanceM+=stepD;
+  if(circuitRtV31.lapArmed){
+    const uint32_t lapEl=gpsTowDeltaMsV30(tow,circuitRtV31.lapStartTow);
+    if(!circuitManualSectorV36&&circuitRtV31.learnedLapDistanceM>50&&circuitRtV31.sectorIndex<2){float target=circuitRtV31.learnedLapDistanceM*(circuitRtV31.sectorIndex==0?0.333333f:0.666667f);if(circuitRtV31.lapDistanceM>=target){circuitRtV31.sectorMs[circuitRtV31.sectorIndex]=lapEl;circuitRtV31.sectorIndex++;if(circuitSectorPopupV31){circuitRtV31.popupType=CIRCUIT_POPUP_SECTOR_V36;circuitRtV31.popupUntil=millis()+1200;screenDirtyV31=true;}if(circuitBeepV31)buzzerPlayV31(1900,90);}}
+    // referensi delta: waktu saat melewati tiap kelipatan 10 m (diinterpolasi di dalam langkah sampel)
+    while(lapRefCurCountV36<LAP_REF_MAX_V36&&circuitRtV31.lapDistanceM>=lapRefCurCountV36*LAP_REF_STEP_M_V36){
+      const float back=(stepD>0.001f)?(circuitRtV31.lapDistanceM-lapRefCurCountV36*LAP_REF_STEP_M_V36)/stepD*(float)stepDt:0.0f;
+      lapRefCurV36[lapRefCurCountV36++]=(back<(float)lapEl)?(uint32_t)((float)lapEl-back):0;
+    }
+  }
   const double DEG=0.017453292519943295,R=6371000.0;double lat0=circuitRtV31.startLat*DEG,north=(gpsLatitudeV30-circuitRtV31.startLat)*DEG*R,east=(gpsLongitudeV30-circuitRtV31.startLon)*DEG*cos(lat0)*R,h=circuitRtV31.startHeadingDeg*DEG;float along=(float)(east*sin(h)+north*cos(h)),lat=(float)(east*cos(h)-north*sin(h));if(sqrtf(along*along+lat*lat)>30)circuitRtV31.seenFar=true;
   if(sp>3.0f)trackPathAddV36((float)east,(float)north);
-  // Deteksi perubahan TANDA (belakang garis -> depan garis); anti-jitter: seenFar, koridor |lat|<=20 m, jeda >=10 s.
-  bool crossed=circuitAutoLapV31&&circuitRtV31.seenFar&&circuitRtV31.havePrevAlong&&circuitRtV31.prevAlongM<0.0f&&along>=0&&fabsf(lat)<=20;
+  // Deteksi perubahan TANDA (belakang garis -> depan garis); anti-jitter: koridor |lat|<=20 m, >=5 km/h,
+  // dan untuk lap yang sedang berjalan: seenFar + jeda >=10 s.
+  bool crossed=circuitAutoLapV31&&circuitRtV31.havePrevAlong&&circuitRtV31.prevAlongM<0.0f&&along>=0&&fabsf(lat)<=20&&sp>=5.0f&&
+               (!circuitRtV31.lapArmed||circuitRtV31.seenFar);
   if(crossed){
     const float den=along-circuitRtV31.prevAlongM;
     const float r=den>0.0001f?(-circuitRtV31.prevAlongM)/den:1.0f;
     const uint32_t crossTow=gpsTowInterpolateV30(circuitPrevTowV36,tow,r);
-    const uint32_t elapsed=gpsTowDeltaMsV30(crossTow,circuitRtV31.lapStartTow);
-    if(elapsed>=10000UL){
-      circuitRtV31.lapCount++;circuitRtV31.lastLapMs=elapsed;if(elapsed<circuitRtV31.bestLapMs)circuitRtV31.bestLapMs=elapsed;
-      if(circuitRtV31.learnedLapDistanceM<=0)circuitRtV31.learnedLapDistanceM=circuitRtV31.lapDistanceM;saveTrackV31();
-      {const uint32_t saved=prefsV31.getUInt("cbest",0);if(saved==0||elapsed<saved)prefsV31.putUInt("cbest",elapsed);}
-      circuitRtV31.popupType=2;circuitRtV31.popupUntil=millis()+1500;if(circuitBeepV31)buzzerPlayV31(2300,180);
-      circuitRtV31.lapStartTow=crossTow;circuitRtV31.lapDistanceM=0;circuitRtV31.sectorIndex=0;circuitRtV31.seenFar=false;screenDirtyV31=true;
-      Serial.printf("LAP %u,%lu\n",(unsigned)circuitRtV31.lapCount,(unsigned long)elapsed);
+    const float carry=(1.0f-constrain(r,0.0f,1.0f))*stepD;
+    if(!circuitRtV31.lapArmed){
+      circuitStartLapV36(crossTow,carry);
+      circuitRtV31.popupType=CIRCUIT_POPUP_START_V36;circuitRtV31.popupUntil=millis()+1500;if(circuitBeepV31)buzzerPlayV31(2300,120);screenDirtyV31=true;
+      Serial.println("LAP START (garis pertama dilewati)");
+    }else{
+      const uint32_t elapsed=gpsTowDeltaMsV30(crossTow,circuitRtV31.lapStartTow);
+      if(elapsed>=10000UL){
+        circuitRtV31.lapCount++;circuitRtV31.lastLapMs=elapsed;
+        if(circuitRtV31.sectorIndex>=2&&circuitRtV31.sectorMs[1]>circuitRtV31.sectorMs[0]&&elapsed>circuitRtV31.sectorMs[1]){
+          circuitRtV31.lastSecMs[0]=circuitRtV31.sectorMs[0];
+          circuitRtV31.lastSecMs[1]=circuitRtV31.sectorMs[1]-circuitRtV31.sectorMs[0];
+          circuitRtV31.lastSecMs[2]=elapsed-circuitRtV31.sectorMs[1];
+          for(uint8_t i=0;i<3;i++)if(circuitRtV31.lastSecMs[i]<circuitRtV31.bestSecMs[i])circuitRtV31.bestSecMs[i]=circuitRtV31.lastSecMs[i];
+        }else for(uint8_t i=0;i<3;i++)circuitRtV31.lastSecMs[i]=0xFFFFFFFFUL;
+        if(elapsed<circuitRtV31.bestLapMs){
+          circuitRtV31.bestLapMs=elapsed;
+          memcpy(lapRefBestV36,lapRefCurV36,lapRefCurCountV36*sizeof(lapRefCurV36[0]));lapRefBestCountV36=lapRefCurCountV36;
+        }
+        if(circuitRtV31.learnedLapDistanceM<=0){circuitRtV31.learnedLapDistanceM=circuitRtV31.lapDistanceM-carry;saveTrackV31();}   // V36.3: NVS ditulis sekali, bukan tiap lap
+        {const uint32_t saved=prefsV31.getUInt("cbest",0);if(saved==0||elapsed<saved)prefsV31.putUInt("cbest",elapsed);}
+        circuitRtV31.popupType=CIRCUIT_POPUP_LAP_V36;circuitRtV31.popupUntil=millis()+1500;if(circuitBeepV31)buzzerPlayV31(2300,180);
+        circuitStartLapV36(crossTow,carry);screenDirtyV31=true;
+        Serial.printf("LAP %u,%lu\n",(unsigned)circuitRtV31.lapCount,(unsigned long)elapsed);
+      }
     }
   }
   circuitRtV31.prevAlongM=along;circuitRtV31.havePrevAlong=true;circuitPrevTowV36=tow;circuitPrevSpV36=sp;
+}
+// V36.3 SET LINE manual (tahan RIGHT 2 detik saat melintas garis finish): garis start/finish dipindah ke
+// posisi & arah saat ini. Dipakai kalau AUTO membuat garis di pit lane / bukan di garis finish asli.
+static void circuitSetLineHereV36(){
+  circuitRtV31.lineSet=true;circuitRtV31.startLat=gpsLatitudeV30;circuitRtV31.startLon=gpsLongitudeV30;circuitRtV31.startHeadingDeg=gpsHeadingDegV30;
+  circuitRtV31.learnedLapDistanceM=0;circuitRtV31.lapCount=0;circuitRtV31.lastLapMs=0;circuitRtV31.bestLapMs=0xFFFFFFFFUL;
+  for(uint8_t i=0;i<3;i++){circuitRtV31.lastSecMs[i]=circuitRtV31.bestSecMs[i]=0xFFFFFFFFUL;}
+  lapRefBestCountV36=0;trackPathCountV36=0;trackPathMinStepV36=8.0f;
+  circuitRtV31.havePrevAlong=true;circuitRtV31.prevAlongM=0;circuitPrevTowV36=gpsITowMsV30;circuitPrevSpV36=gpsSpeedKmhV30;circuitHavePrevTowV36=true;
+  circuitStartLapV36(gpsITowMsV30,0.0f);
+  circuitRtV31.popupType=CIRCUIT_POPUP_LINE_V36;circuitRtV31.popupUntil=millis()+1500;
+  if(circuitBeepV31)buzzerPlayV31(2600,200);
+  saveTrackV31();screenDirtyV31=true;
+  Serial.printf("CIRCUIT SET LINE %.7f %.7f HDG %.1f\n",gpsLatitudeV30,gpsLongitudeV30,gpsHeadingDegV30);
+}
+// V36.3 delta lap berjalan vs best lap pada jarak yang sama (negatif = lebih cepat)
+static bool circuitLiveDeltaV36(int32_t* out){
+  if(!circuitRtV31.lapArmed||lapRefBestCountV36<2)return false;
+  const float x=circuitRtV31.lapDistanceM/LAP_REF_STEP_M_V36;
+  const uint16_t i=(uint16_t)x;
+  if(i+1>=lapRefBestCountV36)return false;
+  const float ref=(float)lapRefBestV36[i]+((float)lapRefBestV36[i+1]-(float)lapRefBestV36[i])*(x-(float)i);
+  const uint32_t now=gpsTowDeltaMsV30(gpsITowMsV30,circuitRtV31.lapStartTow);
+  *out=(int32_t)now-(int32_t)(ref+0.5f);
+  return true;
 }
 
 // ---------- GPS logger real ----------
 struct LoggerRuntimeV31{bool active,havePrev;uint32_t startTow,lastSeq,points,elapsedMs;double prevLat,prevLon;float distanceM,maxSpeed;};static LoggerRuntimeV31 loggerV31={};
 static void loggerResetV31(){memset(&loggerV31,0,sizeof(loggerV31));resetTelemetryV31();}
-static void loggerStartV31(){loggerResetV31();loggerV31.active=true;loggerV31.startTow=gpsITowMsV30;loggerV31.lastSeq=gpsPvtSequenceV30;openLoggerFileV31();Serial.println("tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps");}
+static void loggerStartV31(){loggerResetV31();loggerV31.active=true;loggerV31.startTow=gpsITowMsV30;loggerV31.lastSeq=gpsPvtSequenceV30;openLoggerFileV31();flogStartSessionV36();Serial.println("tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps");}
 // V36.2: sesi yang berhenti disimpan ke NVS (dibaca layar HISTORY).
 static void loggerStopV31(){
   const bool was=loggerV31.active;
-  loggerV31.active=false;closeLoggerFileV31();
+  loggerV31.active=false;closeLoggerFileV31();flogFlushV36();
   if(was&&loggerV31.points>0){prefsV31.putFloat("lgd",loggerV31.distanceM);prefsV31.putUInt("lgt",loggerV31.elapsedMs);prefsV31.putFloat("lgm",loggerV31.maxSpeed);prefsV31.putUInt("lgp",loggerV31.points);}
 }
 // V36.2: jarak hanya dijumlah saat bergerak (>2 km/h) -- dulu jitter posisi saat diam ikut menambah km.
@@ -16233,13 +16523,59 @@ WebServer rs16ServerV31(80);static bool serverRoutesV31=false,otaInProgressV31=f
 // cuma ada di komentar, tidak ada kodenya sama sekali).
 static String otaUserV36="rs16";
 static String otaPassV36="RS160016";
+static String apPassV36="RS160016";   // V36.3: password AP Wi-Fi, bisa diganti lewat Serial "wifipass <8+ karakter>"
+static const char* logStorageTextV36(){return sdReadyV31?"MICRO SD":(flashReadyV36?(flogFullV36?"FLASH FULL":"FLASH 16MB"):"SERIAL ONLY");}
 static uint32_t otaLastActivityMsV36=0;
 static bool otaAuthOkV36(){
   if(rs16ServerV31.authenticate(otaUserV36.c_str(),otaPassV36.c_str()))return true;
   rs16ServerV31.requestAuthentication();
   return false;
 }
-static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=true;rs16ServerV31.on("/",HTTP_GET,[]{rs16ServerV31.send(200,"text/plain","RS16 V31 LIVE\nGET /status\nPOST /update\n");});rs16ServerV31.on("/status",HTTP_GET,[]{char j[220];snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"gps_hz\":%.1f,\"sat\":%u,\"fix\":%s,\"imu\":%s,\"sd\":%s}",gpsActualRateHzV30,gpsSatellitesV30,gpsTimingReadyV31()?"true":"false",imuConnectedV31?"true":"false",sdReadyV31?"true":"false");rs16ServerV31.send(200,"application/json",j);});
+static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=true;rs16ServerV31.on("/",HTTP_GET,[]{rs16ServerV31.send(200,"text/plain","RS16 V31 LIVE\nGET /status\nPOST /update\n");});rs16ServerV31.on("/status",HTTP_GET,[]{char j[300];snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"gps_hz\":%.1f,\"sat\":%u,\"fix\":%s,\"imu\":%s,\"sd\":%s,\"flash_log\":%s,\"flash_used_pct\":%u,\"cfg_nak\":%u}",gpsActualRateHzV30,gpsSatellitesV30,gpsTimingReadyV31()?"true":"false",imuConnectedV31?"true":"false",sdReadyV31?"true":"false",flashReadyV36?"true":"false",(unsigned)flogUsedPctV36(),(unsigned)gpsCfgNakCountV36);rs16ServerV31.send(200,"application/json",j);});
+  // V36.3 unduh log flash. Auth sama dengan OTA. Ditolak saat logger merekam (bus SPI & waktu CPU dipakai).
+  rs16ServerV31.on("/logs",HTTP_GET,[]{
+    if(!otaAuthOkV36())return;
+    if(!flashReadyV36){rs16ServerV31.send(503,"text/plain","FLASH LOG TIDAK TERSEDIA\n");return;}
+    if(loggerV31.active){rs16ServerV31.send(409,"text/plain","LOGGER SEDANG MEREKAM - STOP DULU\n");return;}
+    flogScanSessionsV36();
+    String out;char line[120];
+    snprintf(line,sizeof(line),"RS16 FLASH LOG  %lu/%lu byte (%u%%)\nSESI  TANGGAL(UTC)         RATE  TITIK  UNDUH\n",(unsigned long)flogWriteAddrV36,(unsigned long)FLASH_SIZE_V36,(unsigned)flogUsedPctV36());out+=line;
+    for(uint8_t i=0;i<flogListCountV36;i++){const FlogSessionV36& e=flogListV36[i];
+      snprintf(line,sizeof(line),"%4u  %04u-%02u-%02u %02u:%02u:%02u  %2u HZ  %6lu  /log.csv?s=%u\n",(unsigned)e.no,(unsigned)flogGetU16V36(&e.hdr[4]),e.hdr[6],e.hdr[7],e.hdr[8],e.hdr[9],e.hdr[10],e.hdr[3],(unsigned long)e.recs,(unsigned)e.no);out+=line;}
+    if(!flogListCountV36)out+="(BELUM ADA SESI)\n";
+    rs16ServerV31.send(200,"text/plain",out);
+  });
+  rs16ServerV31.on("/log.csv",HTTP_GET,[]{
+    if(!otaAuthOkV36())return;
+    if(!flashReadyV36){rs16ServerV31.send(503,"text/plain","FLASH LOG TIDAK TERSEDIA\n");return;}
+    if(loggerV31.active){rs16ServerV31.send(409,"text/plain","LOGGER SEDANG MEREKAM - STOP DULU\n");return;}
+    flogScanSessionsV36();
+    if(!flogListCountV36){rs16ServerV31.send(404,"text/plain","BELUM ADA SESI\n");return;}
+    int idx=flogListCountV36-1;
+    if(rs16ServerV31.hasArg("s")){const int want=rs16ServerV31.arg("s").toInt();idx=-1;for(uint8_t i=0;i<flogListCountV36;i++)if(flogListV36[i].no==want)idx=i;}
+    if(idx<0){rs16ServerV31.send(404,"text/plain","SESI TIDAK DITEMUKAN (lihat /logs)\n");return;}
+    const uint32_t start=flogListV36[idx].addr+FLOG_REC_V36;
+    const uint32_t end=(idx+1<flogListCountV36)?flogListV36[idx+1].addr:flogWriteAddrV36;
+    char fn[64];snprintf(fn,sizeof(fn),"attachment; filename=RS16_S%04u.csv",(unsigned)flogListV36[idx].no);
+    rs16ServerV31.sendHeader("Content-Disposition",fn);
+    rs16ServerV31.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    rs16ServerV31.send(200,"text/csv","");
+    static char out[1600];size_t len=snprintf(out,sizeof(out),"tow_ms,lat,lon,speed_kmh,heading_deg,hacc_m,sacc_kmh,fix,sats,ax_g,ay_g,az_g,gz_dps\n");
+    static uint8_t buf[512];
+    for(uint32_t a=start;a<end;a+=sizeof(buf)){
+      const uint32_t n=min((uint32_t)sizeof(buf),end-a);flashReadV36(a,buf,n);
+      for(uint32_t o=0;o+FLOG_REC_V36<=n;o+=FLOG_REC_V36){
+        const uint8_t* r=&buf[o];if(r[0]!=FLOG_TYPE_DATA_V36)continue;
+        len+=snprintf(out+len,sizeof(out)-len,"%lu,%.7f,%.7f,%.3f,%.2f,%.2f,%.3f,%u,%u,%.3f,%.3f,%.3f,%.1f\n",
+          (unsigned long)flogGetU32V36(&r[4]),(int32_t)flogGetU32V36(&r[8])*1e-7,(int32_t)flogGetU32V36(&r[12])*1e-7,
+          flogGetU16V36(&r[16])*0.036f,flogGetU16V36(&r[18])*0.01f,flogGetU16V36(&r[20])*0.01f,flogGetU16V36(&r[22])*0.036f,
+          r[1],r[2],(int16_t)flogGetU16V36(&r[24])*0.001f,(int16_t)flogGetU16V36(&r[26])*0.001f,(int16_t)flogGetU16V36(&r[28])*0.001f,(int16_t)flogGetU16V36(&r[30])*0.1f);
+        if(len>1400){rs16ServerV31.sendContent(out,len);len=0;}
+      }
+    }
+    if(len)rs16ServerV31.sendContent(out,len);
+    rs16ServerV31.sendContent("");
+  });
   rs16ServerV31.on("/update",HTTP_POST,[]{
       if(!otaAuthOkV36())return;                       // V36.1 OTA wajib auth
       bool ok=!Update.hasError()&&otaBytesV31>0&&Update.isFinished();   // V36.2: tanpa file = bukan sukses
@@ -16263,7 +16599,7 @@ static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=tr
       }
     });
 }
-static void startWifiV31(){if(wifiUserEnabledV31&&WiFi.getMode()==WIFI_AP)return;wifiUserEnabledV31=true;WiFi.mode(WIFI_AP);WiFi.softAP("RS16_0016","RS160016");configureOtaRoutesV31();rs16ServerV31.begin();screenDirtyV31=true;}
+static void startWifiV31(){if(wifiUserEnabledV31&&WiFi.getMode()==WIFI_AP)return;wifiUserEnabledV31=true;WiFi.mode(WIFI_AP);WiFi.softAP("RS16_0016",apPassV36.c_str());configureOtaRoutesV31();rs16ServerV31.begin();screenDirtyV31=true;}
 static void stopWifiV31(){if(otaInProgressV31)return;wifiUserEnabledV31=false;rs16ServerV31.stop();WiFi.softAPdisconnect(true);WiFi.mode(WIFI_OFF);screenDirtyV31=true;}
 static void serviceWifiV31(){
   if(wifiUserEnabledV31)rs16ServerV31.handleClient();
@@ -16321,6 +16657,7 @@ static void loadSettingsV31(){dragRolloutEnabled=prefsV31.getBool("roll",true);i
   // saat ini penggantian hanya bisa lewat NVS, jadi jangan anggap password default sudah aman.
   {String u=prefsV31.getString("otau","");if(u.length())otaUserV36=u;}
   {String p=prefsV31.getString("otap","");if(p.length())otaPassV36=p;}
+  {String w=prefsV31.getString("appw","");if(w.length()>=8)apPassV36=w;}
 }
 
 // ---------- V36.1 compare Best/Last ----------
@@ -16518,7 +16855,7 @@ static void drawDragRunningV31(){
     drawTextV31(18,60,line,C_V31_WHITE,1);
   }
 
-  float d=max(0.0f,dragRtV31.rawDistanceM-(dragRolloutEnabled?0.3048f:0));
+  float d=max(0.0f,dragRtV31.rawDistanceM-(dragUseRolloutV36()?0.3048f:0));
   snprintf(dist,sizeof(dist),"%.1f %s",distDispV36(d),distUnitV36());
   drawTextV31(20,151,"DIST",C_V31_GRAY,1);
   drawTextV31(20,166,dist,C_V31_WHITE,1);
@@ -16544,7 +16881,11 @@ static void drawDragFinishV31(){
   fillScreen(C_V31_BG);drawTopBarV31();
 
   drawTextV31(18,40,dragAbortedV36?"ABORTED":"RESULT",dragAbortedV36?C_V31_RED:C_V31_WHITE,2);
-  {
+  if(!dragAbortedV36&&dragRtV31.quality){
+    // V36.3: run tidak valid untuk rekor -> alasan tampil merah menggantikan info freeze
+    char q[30];snprintf(q,sizeof(q),"NOT BEST: %s",dragQualityTextV36(dragRtV31.quality));
+    drawTextRightV31(302,43,q,C_V31_RED,1);
+  }else{
     const char* fz=dragFreezeModeV36==0?"AUTO 10 S":(dragFreezeModeV36==1?"AUTO 30 S":"MANUAL");
     drawTextRightV31(302,43,fz,C_V31_GRAY,1);
   }
@@ -16553,28 +16894,31 @@ static void drawDragFinishV31(){
   // V36.1 SATU daftar gabungan: statistik utama + nama mode + checkpoint
   char v[26];
   const int16_t yTop=66,rowH=17;
-  const char* labels[4]={"MAX SPEED","TIME FINAL","DISTANCE","MODE"};
-  char vals[4][26];
+  // V36.3: + TRAP SPEED (kecepatan di garis finish)
+  const char* labels[5]={"MAX SPEED","TRAP SPEED","TIME FINAL","DISTANCE","MODE"};
+  char vals[5][26];
   snprintf(vals[0],sizeof(vals[0]),"%.1f %s",spdDispV36(dragRtV31.maxSpeedKmh),spdUnitV36());
-  formatMsV31(dragRtV31.totalMs,vals[1],sizeof(vals[1]));
+  if(dragRtV31.trapSpeedKmh>0.0f)snprintf(vals[1],sizeof(vals[1]),"%.1f %s",spdDispV36(dragRtV31.trapSpeedKmh),spdUnitV36());
+  else snprintf(vals[1],sizeof(vals[1]),"--");
+  formatMsV31(dragRtV31.totalMs,vals[2],sizeof(vals[2]));
   {
-    float d=max(0.0f,dragRtV31.rawDistanceM-(dragRolloutEnabled?0.3048f:0));
-    snprintf(vals[2],sizeof(vals[2]),"%.1f %s",distDispV36(d),distUnitV36());
+    float d=max(0.0f,dragRtV31.rawDistanceM-(dragUseRolloutV36()?0.3048f:0));
+    snprintf(vals[3],sizeof(vals[3]),"%.1f %s",distDispV36(d),distUnitV36());
   }
-  snprintf(vals[3],sizeof(vals[3]),"%s",dragModeNameV31());
-  for(uint8_t i=0;i<4;i++){
+  snprintf(vals[4],sizeof(vals[4]),"%s",dragModeNameV31());
+  for(uint8_t i=0;i<5;i++){
     int16_t y=yTop+i*rowH;
     drawTextV31(22,y,labels[i],C_V31_GRAY,1);
-    drawTextRightV31(298,y,vals[i],i==1?C_V31_BLUE:C_V31_WHITE,1);
+    drawTextRightV31(298,y,vals[i],i==2?C_V31_BLUE:C_V31_WHITE,1);
   }
 
-  drawHLineV31(18,yTop+4*rowH+3,284,C_V31_EDGE);
+  drawHLineV31(18,yTop+5*rowH+3,284,C_V31_EDGE);
 
   float tg[4];dragTargetsV31(tg);
   uint8_t shown=0;
   for(uint8_t i=0;i<4;i++){
     if(tg[i]<=0.0f)continue;
-    int16_t y=yTop+4*rowH+10+shown*rowH;
+    int16_t y=yTop+5*rowH+10+shown*rowH;
     char l[18];dragTargetLabelV31(tg[i],l,sizeof(l));
     formatMsV31(dragRtV31.checkpointMs[i],v,sizeof(v));
     drawTextV31(22,y,l,C_V31_GRAY,1);
@@ -16669,9 +17013,9 @@ static void drawGpsSatelliteV31(){
 }
 // ---------- V36.2 menu GNSS ala Qstarz ----------
 static void drawGnssMenuV36(){
-  char st[16],rt[12];
+  char st[16],rt[16];
   snprintf(st,sizeof(st),"%s",gpsReadyLatchedV35?"3D FIX":(gpsFixTypeV30>=2?"2D FIX":"SEARCH"));
-  snprintf(rt,sizeof(rt),"%u HZ",(unsigned)gnssRateHzV36());
+  snprintf(rt,sizeof(rt),gpsCfgNakCountV36?"%u HZ NAK":"%u HZ",(unsigned)gnssRateHzV36());
   const char* lab[]={"GNSS STATUS","GNSS COLD START","GNSS SYSTEM","GNSS UPDATE RATE"};
   const char* val[]={st,"","",rt};
   drawListV36(lab,val,4,gnssMenuSelection,-1,nullptr);
@@ -16697,6 +17041,7 @@ static void drawGnssColdStartV36(){
     drawTextCenteredV31(160,172,e,C_V31_WHITE,1);
     char sv[24];snprintf(sv,sizeof(sv),"SAT %u  USED %u",(unsigned)gpsSatViewCountV32,(unsigned)gpsSatUsedV31);
     drawTextCenteredV31(160,196,sv,C_V31_TEXT,1);
+    if(!busy)drawTextCenteredV31(160,213,"OK = ULANGI COLD START",C_V31_BLUE,1);
   }
   drawTextCenteredV31(160,229,"BACK = KEMBALI",C_V31_GRAY,1);
 }
@@ -16770,15 +17115,20 @@ static void drawCircuitRunningV31(){
   snprintf(sp,sizeof(sp),"%.0f",spdDispV36(gpsSpeedKmhV30));
   drawTextCenteredV31(92,66,sp,C_V31_WHITE,4);drawTextCenteredV31(92,101,spdUnitV36(),C_V31_GRAY,1);
 
-  uint32_t elapsed=circuitRtV31.lineSet?gpsTowDeltaMsV30(gpsITowMsV30,circuitRtV31.lapStartTow):0;
+  uint32_t elapsed=(circuitRtV31.lineSet&&circuitRtV31.lapArmed)?gpsTowDeltaMsV30(gpsITowMsV30,circuitRtV31.lapStartTow):0xFFFFFFFFUL;
   formatMsV31(elapsed,cur,sizeof(cur));
-  drawTextCenteredV31(226,69,"CURRENT LAP",C_V31_GRAY,1);
+  {
+    // V36.3 delta live vs best lap: hijau = lebih cepat, merah = lebih lambat
+    int32_t dl=0;char dv[24],dt[28];
+    if(circuitLiveDeltaV36(&dl)){formatDeltaV36(dl,dv,sizeof(dv));snprintf(dt,sizeof(dt),"DELTA %s",dv);drawTextCenteredV31(226,69,dt,dl<=0?C_V31_GREEN:C_V31_RED,1);}
+    else drawTextCenteredV31(226,69,circuitRtV31.lapArmed?"CURRENT LAP":"CROSS LINE TO START",C_V31_GRAY,1);
+  }
   drawTextCenteredV31(226,89,cur,C_V31_WHITE,2);
 
   formatMsV31(circuitRtV31.bestLapMs==0xFFFFFFFFUL?0xFFFFFFFFUL:circuitRtV31.bestLapMs,best,sizeof(best));
   formatMsV31(circuitRtV31.lastLapMs?circuitRtV31.lastLapMs:0xFFFFFFFFUL,last,sizeof(last));
   drawPanelV31(14,111,72,36,false);drawPanelV31(92,111,72,36,false);drawPanelV31(170,111,72,36,false);
-  drawTextCenteredV31(50,118,"BEST",C_V31_GRAY,1);drawTextCenteredV31(128,118,"LAST",C_V31_GRAY,1);drawTextCenteredV31(206,118,"S2",C_V31_GRAY,1);
+  drawTextCenteredV31(50,118,"BEST",C_V31_GRAY,1);drawTextCenteredV31(128,118,"LAST",C_V31_GRAY,1);{char sl[8];if(circuitRtV31.sectorIndex)snprintf(sl,sizeof(sl),"S%u",(unsigned)circuitRtV31.sectorIndex);else snprintf(sl,sizeof(sl),"SECTOR");drawTextCenteredV31(206,118,sl,C_V31_GRAY,1);}
   drawTextCenteredV31(50,134,best,C_V31_WHITE,1);drawTextCenteredV31(128,134,last,C_V31_WHITE,1);
   char sec[20];formatMsV31(circuitRtV31.sectorIndex?circuitRtV31.sectorMs[circuitRtV31.sectorIndex-1]:0xFFFFFFFFUL,sec,sizeof(sec));
   drawTextCenteredV31(206,134,sec,circuitRtV31.sectorIndex?C_V31_BLUE:C_V31_WHITE,1);
@@ -16801,8 +17151,25 @@ static void drawCircuitRunningV31(){
       fillRect(PX(trackPathCountV36-1)-1,PY(trackPathCountV36-1)-1,3,3,C_V31_WHITE); // posisi terakhir
     }else drawTextCenteredV31(bx+bw/2,by+bh/2-3,"--",C_V31_DARK,1);
   }
-  drawTextV31(14,228,"TRACK PATH",C_V31_GRAY,1);
+  drawTextV31(14,228,"HOLD RIGHT = SET LINE",C_V31_GRAY,1);
   drawTextRightV31(302,228,circuitAutoLapV31?"AUTO LAP ON":"AUTO LAP OFF",circuitAutoLapV31?C_V31_BLUE:C_V31_GRAY,1);
+  // V36.3 popup lap / sektor / start (dulu popupType di-set tapi tidak pernah digambar)
+  if(circuitRtV31.popupUntil&&(int32_t)(millis()-circuitRtV31.popupUntil)<0){
+    char t1[24],t2[24];
+    if(circuitRtV31.popupType==CIRCUIT_POPUP_SECTOR_V36&&circuitRtV31.sectorIndex){
+      snprintf(t1,sizeof(t1),"SECTOR %u",(unsigned)circuitRtV31.sectorIndex);
+      formatMsV31(circuitRtV31.sectorMs[circuitRtV31.sectorIndex-1],t2,sizeof(t2));
+    }else if(circuitRtV31.popupType==CIRCUIT_POPUP_LAP_V36){
+      snprintf(t1,sizeof(t1),circuitRtV31.lastLapMs==circuitRtV31.bestLapMs?"LAP %u BEST":"LAP %u",(unsigned)circuitRtV31.lapCount);
+      formatMsV31(circuitRtV31.lastLapMs,t2,sizeof(t2));
+    }else{
+      snprintf(t1,sizeof(t1),"%s",circuitRtV31.popupType==CIRCUIT_POPUP_LINE_V36?"LINE SET":"LAP START");
+      snprintf(t2,sizeof(t2),"GO");
+    }
+    drawPanelV31(60,150,200,62,true);
+    drawTextCenteredV31(160,160,t1,C_V31_WHITE,2);
+    drawTextCenteredV31(160,186,t2,C_V31_BLUE,2);
+  }
 }
 static void drawCircuitFinishV31(){
   fillScreen(C_V31_BG);drawTopBarV31();
@@ -16821,6 +17188,20 @@ static void drawCircuitFinishV31(){
     drawTextV31(42,149,"LAST LAP",C_V31_WHITE,1);drawTextRightV31(278,149,last,C_V31_WHITE,1);
   } else {
     drawTextCenteredV31(160,149,"NO COMPLETE LAP",C_V31_GRAY,1);
+  }
+  // V36.3 best sector + theoretical best (jumlah best S1+S2+S3)
+  {
+    const int16_t sx[3]={120,180,240};char v[20];bool all=true;uint32_t sum=0;
+    drawTextV31(42,171,"BEST SEC",C_V31_GRAY,1);
+    for(uint8_t i=0;i<3;i++){
+      const uint32_t b=circuitRtV31.bestSecMs[i];
+      if(b==0xFFFFFFFFUL)all=false;else sum+=b;
+      char l[6];snprintf(l,sizeof(l),"S%u",(unsigned)(i+1));
+      drawTextCenteredV31(sx[i]+10,160,l,C_V31_DARK,1);
+      formatMsV31(b,v,sizeof(v));drawTextCenteredV31(sx[i]+10,171,v,b==0xFFFFFFFFUL?C_V31_DARK:C_V31_WHITE,1);
+    }
+    formatMsV31(all?sum:0xFFFFFFFFUL,v,sizeof(v));
+    drawTextV31(42,193,"THEORETICAL",C_V31_GRAY,1);drawTextRightV31(278,193,v,all?C_V31_BLUE:C_V31_DARK,1);
   }
 }
 static void drawGpsLoggerMenuV31(){
@@ -16856,7 +17237,7 @@ static void drawLoggerRecordingV31(){
   // FIX 6 Sep 2026: dulu menampilkan loggerV31.maxSpeed mentah (selalu km/h) sehingga tidak ikut
   // setting UNIT global -- layar Finish untuk nilai yang sama sudah benar. Posisi/warna/font TIDAK diubah.
   drawTextCenteredV31(206,128,"MAX",C_V31_GRAY,1);snprintf(v,sizeof(v),"%.1f",spdDispV36(loggerV31.maxSpeed));drawTextCenteredV31(206,146,v,C_V31_WHITE,1);
-  drawTextV31(14,228,"TRACK RECORD",C_V31_GRAY,1);drawTextRightV31(302,228,sdReadyV31?"SD WRITE":"SERIAL CSV",sdReadyV31?C_V31_GREEN:C_V31_BLUE,1);
+  drawTextV31(14,228,"TRACK RECORD",C_V31_GRAY,1);drawTextRightV31(302,228,sdReadyV31?"SD WRITE":(flashReadyV36?(flogFullV36?"FLASH FULL":"FLASH WRITE"):"SERIAL CSV"),(sdReadyV31||(flashReadyV36&&!flogFullV36))?C_V31_GREEN:(flogFullV36?C_V31_RED:C_V31_BLUE),1);
 }
 static void drawLoggerFinishV31(){
   fillScreen(C_V31_BG);drawTopBarV31();drawTextV31(14,41,"LOGGER FINISH",C_V31_WHITE,2);drawTextRightV31(302,42,"REC STOP",C_V31_GRAY,1);drawHLineV31(14,58,292,C_V31_BLUE);
@@ -16865,7 +17246,7 @@ static void drawLoggerFinishV31(){
   drawTextV31(48,149,"MAX SPEED",C_V31_GRAY,1);snprintf(v,sizeof(v),"%.1f %s",spdDispV36(loggerV31.maxSpeed),spdUnitV36());drawTextRightV31(280,149,v,C_V31_WHITE,1);
   drawTextV31(48,174,"GPS POINTS",C_V31_GRAY,1);snprintf(v,sizeof(v),"%lu",(unsigned long)loggerV31.points);drawTextRightV31(280,174,v,C_V31_WHITE,1);
   drawTextV31(48,199,"LOG RATE",C_V31_GRAY,1);snprintf(v,sizeof(v),"%.1f Hz",gpsActualRateHzV30);drawTextRightV31(280,199,v,C_V31_BLUE,1);
-  drawTextRightV31(302,228,sdReadyV31?"AUTO SAVE":"SERIAL ONLY",sdReadyV31?C_V31_GREEN:C_V31_GRAY,1);
+  drawTextRightV31(302,228,(sdReadyV31||flashReadyV36)?"AUTO SAVE":"SERIAL ONLY",(sdReadyV31||flashReadyV36)?C_V31_GREEN:C_V31_GRAY,1);
 }
 static void drawLoggerInfoV31(){
   fillScreen(C_V31_BG);drawTopBarV31();drawTextV31(14,41,"LOGGER INFO",C_V31_WHITE,2);drawHLineV31(14,58,292,C_V31_BLUE);
@@ -16875,7 +17256,7 @@ static void drawLoggerInfoV31(){
   snprintf(b,sizeof(b),"%u",gpsEffectiveUsedSatV36()?gpsEffectiveUsedSatV36():gpsSatViewCountV32);
   if(gpsHdopValidV30)snprintf(c,sizeof(c),"%.1f",gpsHdopV30);else snprintf(c,sizeof(c),"--");
   snprintf(d,sizeof(d),"%.1f Hz",gpsActualRateHzV30);
-  snprintf(e,sizeof(e),"%s",sdReadyV31?"MICRO SD":"SERIAL");
+  if(!sdReadyV31&&flashReadyV36)snprintf(e,sizeof(e),"FLASH %u%%",(unsigned)flogUsedPctV36());else snprintf(e,sizeof(e),"%s",logStorageTextV36());
   const char* val[]={a,b,c,d,e};
   for(uint8_t i=0;i<5;i++){int y=73+i*29;drawTextV31(24,y,lab[i],C_V31_GRAY,1);drawTextRightV31(296,y,val[i],i==3?C_V31_BLUE:C_V31_WHITE,1);drawHLineV31(22,y+14,276,C_V31_EDGE);}
 }
@@ -16920,8 +17301,8 @@ static void drawImuCalRunningV31(){drawBaseV31("IMU CALIBRATION",imuConnectedV31
 static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
 
 static void drawApplicationMenuV31(){char w[8];boolTextV31(wifiUserEnabledV31,w,sizeof(w));const char* lab[]={"WI-FI","PHONE LINK","FIRMWARE UPDATE","CONNECTION INFO"};const char* val[]={w,"CONNECT / SYNC","UPDATE FROM PHONE","IP / STATUS"};drawMenuRowsV31("APPLICATION",lab,val,4,applicationSelection);}
-static void drawWifiV31(){drawBaseV31("WI-FI",wifiUserEnabledV31?"ON":"OFF");if(wifiUserEnabledV31){drawTextCenteredV31(160,81,"RS16_0016",C_V31_WHITE,2);drawTextCenteredV31(160,111,"IP 192.168.4.1",C_V31_BLUE,1);char c[24];snprintf(c,sizeof(c),"CLIENT %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,139,c,C_V31_TEXT,1);drawTextCenteredV31(160,169,"PASSWORD RS160016",C_V31_GRAY,1);}else{drawTextCenteredV31(160,102,"WI-FI OFF",C_V31_GRAY,2);drawTextCenteredV31(160,139,"WI-FI AVAILABLE",C_V31_BLUE,1);}drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
-static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"WIFI OFF");drawTextCenteredV31(160,82,"RS16 PHONE CONNECTION",C_V31_WHITE,2);drawTextCenteredV31(160,122,wifiUserEnabledV31?"CONNECT TO RS16_0016":"ENABLE WI-FI FIRST",C_V31_BLUE,1);drawTextCenteredV31(160,147,"DEVICE API: 192.168.4.1/STATUS",C_V31_TEXT,1);drawTextCenteredV31(160,177,"OTA: POST /UPDATE",C_V31_TEXT,1);drawTextCenteredV31(160,218,"CONNECTION READY",C_V31_GRAY,1);}
+static void drawWifiV31(){drawBaseV31("WI-FI",wifiUserEnabledV31?"ON":"OFF");if(wifiUserEnabledV31){drawTextCenteredV31(160,81,"RS16_0016",C_V31_WHITE,2);drawTextCenteredV31(160,111,"IP 192.168.4.1",C_V31_BLUE,1);char c[24];snprintf(c,sizeof(c),"CLIENT %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,139,c,C_V31_TEXT,1);{char pw[40];snprintf(pw,sizeof(pw),"PASSWORD %s",apPassV36.c_str());drawTextCenteredV31(160,169,pw,C_V31_GRAY,1);}}else{drawTextCenteredV31(160,102,"WI-FI OFF",C_V31_GRAY,2);drawTextCenteredV31(160,139,"WI-FI AVAILABLE",C_V31_BLUE,1);}drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
+static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"WIFI OFF");drawTextCenteredV31(160,82,"RS16 PHONE CONNECTION",C_V31_WHITE,2);drawTextCenteredV31(160,122,wifiUserEnabledV31?"CONNECT TO RS16_0016":"ENABLE WI-FI FIRST",C_V31_BLUE,1);drawTextCenteredV31(160,147,"LOG: 192.168.4.1/LOGS",C_V31_TEXT,1);drawTextCenteredV31(160,177,"OTA: POST /UPDATE",C_V31_TEXT,1);drawTextCenteredV31(160,218,"CONNECTION READY",C_V31_GRAY,1);}
 static void drawOtaV31(){drawBaseV31("FIRMWARE UPDATE",otaInProgressV31?"UPDATING":"READY");if(!wifiUserEnabledV31)drawTextCenteredV31(160,92,"WI-FI WILL START",C_V31_BLUE,2);else{char b[30];snprintf(b,sizeof(b),"RECEIVED %lu BYTES",(unsigned long)otaBytesV31);drawTextCenteredV31(160,91,"POST FIRMWARE TO /UPDATE",C_V31_WHITE,1);drawTextCenteredV31(160,123,b,C_V31_TEXT,1);}drawTextCenteredV31(160,165,"192.168.4.1",C_V31_BLUE,2);drawTextCenteredV31(160,206,otaInProgressV31?"DO NOT POWER OFF":"UPDATE READY",otaInProgressV31?C_V31_RED:C_V31_GRAY,1);}
 static void drawConnectionV31(){drawBaseV31("CONNECTION INFO",wifiUserEnabledV31?"ONLINE":"OFFLINE");char a[30],b[30],c[30];snprintf(a,sizeof(a),"WI-FI %s",wifiUserEnabledV31?"ON":"OFF");snprintf(b,sizeof(b),"CLIENT %u",wifiUserEnabledV31?WiFi.softAPgetStationNum():0);snprintf(c,sizeof(c),"OTA BYTES %lu",(unsigned long)otaBytesV31);drawTextV31(34,84,a,C_V31_WHITE,1);drawTextV31(34,115,"SSID RS16_0016",C_V31_WHITE,1);drawTextV31(34,146,"IP 192.168.4.1",C_V31_WHITE,1);drawTextV31(34,177,b,C_V31_WHITE,1);drawTextV31(34,208,c,C_V31_BLUE,1);}
 
@@ -16930,12 +17311,16 @@ static void drawDisplaySettingsV31(){drawBaseV31("DISPLAY","HARDWARE");drawTextC
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"COUNTDOWN BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V31");char gps[28],imu[28],bat[28],sd[34];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");snprintf(sd,sizeof(sd),"MICRO SD %s",sdReadyV31?"READY":"PIN MAP NEEDED");char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,"DATA MANAGEMENT"};for(uint8_t i=0;i<7;i++)drawTextV31(30,73+i*23,rows[i],i==0?C_V31_GRAY:(i==6?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V31");char gps[28],imu[28],bat[28],sd[34];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");if(sdReadyV31)snprintf(sd,sizeof(sd),"MICRO SD READY");else if(flashReadyV36)snprintf(sd,sizeof(sd),"LOG FLASH %u%% USED",(unsigned)flogUsedPctV36());else snprintf(sd,sizeof(sd),"LOG STORAGE NONE");char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,"DATA MANAGEMENT"};for(uint8_t i=0;i<7;i++)drawTextV31(30,73+i*23,rows[i],i==0?C_V31_GRAY:(i==6?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
-static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"RAM / FUTURE SD","SD LOG FILES","RUNTIME + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
+static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST","FLASH / SD LOGS","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
 static void drawConfirmV31(){drawBaseV31("CONFIRM ACTION","SAFETY");const char* a[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};drawTextCenteredV31(160,92,a[confirmActionV31],C_V31_RED,2);drawTextCenteredV31(160,139,"HOLD OK 2 SEC TO CONFIRM",C_V31_WHITE,1);drawTextCenteredV31(160,168,"CANCEL AVAILABLE",C_V31_BLUE,1);}
 static void deleteGpsLogsV31(){
+  if(flashReadyV36){
+    fillScreen(C_V31_BG);drawTextCenteredV31(160,104,"ERASING LOG",C_V31_WHITE,2);drawTextCenteredV31(160,134,"JANGAN MATIKAN DEVICE",C_V31_GRAY,1);
+    flogEraseAllV36();
+  }
 #if RS16_SD_ENABLED
   if(!sdReadyV31)return;File root=SD.open("/");if(!root)return;File f=root.openNextFile();while(f){String name=f.name();bool dir=f.isDirectory();f.close();if(!dir&&(name.startsWith("/LOG_")||name=="/RS16_LOG.CSV"))SD.remove(name);f=root.openNextFile();}root.close();
 #endif
@@ -17128,7 +17513,8 @@ static void handleButtonsV31(){
     return;
   }
   if(uiTestScreen==UI_GNSS_COLDSTART){
-    if(ok&BUTTON_EVENT_SHORT&&!gnssColdStartMsV36){gnssColdStartV36();screenDirtyV31=true;}
+    // V36.3: cold start bisa diulang setelah proses sebelumnya selesai (dulu cuma sekali per boot)
+    if(ok&BUTTON_EVENT_SHORT&&(!gnssColdStartMsV36||millis()-gnssColdStartMsV36>=30000UL||gpsReadyLatchedV35)){gnssColdStartV36();screenDirtyV31=true;}
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
     return;
   }
@@ -17196,7 +17582,12 @@ if(uiTestScreen==UI_CIRCUIT_STANDBY){
         bool saved=prefsV31.getBool("trk",false);
         bool useLast=(circuitTrackModeV31==1)||(circuitTrackModeV31==0&&saved);
         circuitResetV31(true);
-        if(useLast)loadTrackV31();
+        if(useLast&&loadTrackV31()&&circuitTrackModeV31==0){
+          // V36.3: AUTO hanya memakai garis tersimpan kalau masih di sirkuit yang sama (< 3 km).
+          // Dulu garis dari sirkuit lain tetap dipakai -> lap tidak pernah terhitung.
+          const float far=gpsDistanceMetersV30(circuitRtV31.startLat,circuitRtV31.startLon,gpsLatitudeV30,gpsLongitudeV30);
+          if(far>3000.0f){circuitResetV31(true);Serial.printf("CIRCUIT: garis tersimpan %.1f km -> buat garis baru\n",far/1000.0f);}
+        }
         uiTestScreen=UI_CIRCUIT_RUNNING;
         screenDirtyV31=true;
       }
@@ -17211,11 +17602,16 @@ if(uiTestScreen==UI_CIRCUIT_RUNNING){
     // FIX 6 Sep 2026: penanda sektor manual PINDAH dari tombol OK ke tombol RIGHT (bit P4 PCF8574,
     // baru ikut dibaca sejak fix ini). Dulu OK dipakai untuk sektor manual, akibatnya OK TIDAK BISA
     // menghentikan sesi -- dan kalau mode sektor manual OFF (default), OK sama sekali tidak berfungsi.
-    if(right&BUTTON_EVENT_SHORT&&circuitManualSectorV36&&circuitRtV31.sectorIndex<2){
+    if(right&BUTTON_EVENT_LONG){
+      if(gpsTimingReadyV31()&&gpsSpeedKmhV30>=5.0f)circuitSetLineHereV36();
+      else{if(circuitBeepV31)buzzerPlayV31(800,120);Serial.println("SET LINE: butuh GPS READY & >= 5 km/h");}
+    }
+    if(right&BUTTON_EVENT_SHORT&&circuitManualSectorV36&&circuitRtV31.lapArmed&&circuitRtV31.sectorIndex<2){
       circuitRtV31.sectorMs[circuitRtV31.sectorIndex]=
         gpsTowDeltaMsV30(gpsITowMsV30,circuitRtV31.lapStartTow);
       circuitRtV31.sectorIndex++;
       if(circuitBeepV31)buzzerPlayV31(1900,90);
+      if(circuitSectorPopupV31){circuitRtV31.popupType=CIRCUIT_POPUP_SECTOR_V36;circuitRtV31.popupUntil=millis()+1200;}
       screenDirtyV31=true;
     }
     // OK sekarang menghentikan sesi (sesuai keputusan desain), sama seperti BACK.
@@ -17481,7 +17877,13 @@ static void serviceGpsRecoveryV32(){
   }
 }
 
-static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
+static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();
+  // V36.3: ganti kredensial tanpa compile ulang (disimpan NVS). Wi-Fi/OTA min 8 karakter.
+  else if(cmd.startsWith("wifipass ")){String v=cmd.substring(9);v.trim();if(v.length()>=8&&v.length()<=63){apPassV36=v;prefsV31.putString("appw",v.c_str());Serial.println("WIFI PASS OK (berlaku saat Wi-Fi dinyalakan ulang)");}else Serial.println("WIFI PASS: 8-63 karakter");}
+  else if(cmd.startsWith("otapass ")){String v=cmd.substring(8);v.trim();if(v.length()>=8){otaPassV36=v;prefsV31.putString("otap",v.c_str());Serial.println("OTA PASS OK");}else Serial.println("OTA PASS: min 8 karakter");}
+  else if(cmd.startsWith("otauser ")){String v=cmd.substring(8);v.trim();if(v.length()>=1){otaUserV36=v;prefsV31.putString("otau",v.c_str());Serial.println("OTA USER OK");}}
+  else if(cmd=="flash")Serial.printf("FLASH LOG %s JEDEC=%06lX USED=%lu (%u%%) SESI=%u NAK=%u\n",flashReadyV36?"OK":"OFF",(unsigned long)flashJedecV36,(unsigned long)flogWriteAddrV36,(unsigned)flogUsedPctV36(),(unsigned)flogSessionV36,(unsigned)gpsCfgNakCountV36);
+  cmd="";}else if(cmd.length()<64)cmd+=c;}}
 
 // PENANDA BOOT (ditambahkan 6 Sep 2026) -- setiap langkah setup() mencetak satu baris ke Serial.
 // Tujuannya: kalau board macet/reset saat boot, baris terakhir yang muncul langsung menunjukkan
@@ -17532,7 +17934,7 @@ void setup(){
   lcdInit();BOOTMARK_V36("13 LCD di-init");
   drawOpening();BOOTMARK_V36("14 opening screen digambar");
   detectAndConfigureGpsV32();BOOTMARK_V36("15 GPS selesai dideteksi");
-  initSdV31();BOOTMARK_V36("16 storage dicek");
+  initSdV31();initFlashLogV36();BOOTMARK_V36("16 storage dicek");
   drawSelectedMenu(selectedMenu);lastActivityMsV31=millis();BOOTMARK_V36("17 menu utama digambar");
   Serial.println("RS16 V36 READY - ALL MENU ACTIONS / LIVE DATA / STABLE GNSS");Serial.printf("GNSS MG-902 UBX 25Hz, IMU %s 200Hz, RAW SPI ILI9341\n",imuChipNameV36());Serial.println(RS16_SD_ENABLED?"MICROSD COMPILE ENABLED":"MICROSD SLOT EXISTS; SET SD GPIO MAP TO ENABLE WRITES");
 }
