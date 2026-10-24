@@ -1,4 +1,15 @@
 /*
+  RS16 V36.5 PCB V2 (24 Okt 2026) -- pin dicek dari Gerber X2 "RS16_V2 KICAD_100x55" (netlist per pad):
+  - LCD lampu latar lewat Q5 di GPIO14 (TFT_BL): WAJIB di-drive, sekarang PWM + menu kecerahan.
+  - POWER_HOLD GPIO12 TIDAK ADA lagi (IO12 tidak tersambung). Daya diatur IC power bank U1 (IP5306,
+    KEY = tombol power). Power off firmware = GPS backup + LCD sleep + ESP32 deep sleep; IP5306
+    mematikan output sendiri saat beban kecil. Bangun = tekan tombol apa saja (PCF INT -> GPIO13).
+  - Tombol POWER dibaca (PCF P0, logika terbalik lewat Q4): tahan 2 detik = power off.
+  - PCF8574 A0-A2 = GND -> alamat 0x20 (PCF8574) atau 0x38 (PCF8574A): dideteksi otomatis.
+  - microSD tersambung: CS GPIO26, bus SPI bersama LCD/IMU/flash. Log CSV ke kartu + flash.
+  - LED GPS FIX di GPIO4: nyala = GPS READY, kedip = mencari, mati = tidak ada data GPS.
+  - SELF TEST: SETTINGS > SYSTEM INFO, tahan OK 2 detik (atau Serial "selftest").
+
   RS16 V36.3 (24 Okt 2026) -- perbaikan total hasil review:
   GNSS : parser UBX resync kalau panjang paket rusak, ACK/NAK konfigurasi dibaca & ditampilkan,
          dynamic model AUTOMOTIVE, UART1 output UBX saja, GNSS restart (hot) setelah ganti
@@ -92,6 +103,7 @@
 #include <Update.h>
 #include <math.h>
 #include <esp_heap_caps.h>
+#include <esp_sleep.h>
 
 // Forward declaration: mencegah error "'ScreenEraseRun' does not name a type".
 // Arduino IDE otomatis membuat prototype untuk drawScreenEraseV36() dan menaruhnya
@@ -106,17 +118,18 @@ struct ScreenEraseRun;
 // for SD_CS / SD_MISO / SD_MOSI / SD_SCK is not present in the firmware/net
 // data available to this build, so V31 does NOT guess pins. Fill the four
 // values below from the actual PCB netlist to enable real SD writes.
+// PCB V2: J_SD1 DAT3/CS = net TFT_SD_CS -> IO26; CMD/CLK/DAT0 di bus SPI bersama (23/18/19).
 #ifndef RS16_SD_CS_PIN
-#define RS16_SD_CS_PIN   -1
+#define RS16_SD_CS_PIN   26
 #endif
 #ifndef RS16_SD_MISO_PIN
-#define RS16_SD_MISO_PIN -1
+#define RS16_SD_MISO_PIN 19
 #endif
 #ifndef RS16_SD_MOSI_PIN
-#define RS16_SD_MOSI_PIN -1
+#define RS16_SD_MOSI_PIN 23
 #endif
 #ifndef RS16_SD_SCK_PIN
-#define RS16_SD_SCK_PIN  -1
+#define RS16_SD_SCK_PIN  18
 #endif
 #if (RS16_SD_CS_PIN >= 0) && (RS16_SD_MISO_PIN >= 0) && (RS16_SD_MOSI_PIN >= 0) && (RS16_SD_SCK_PIN >= 0)
 #define RS16_SD_ENABLED 1
@@ -145,13 +158,21 @@ struct ScreenEraseRun;
 // flash ini (belum ada driver NOR flash-nya, lihat daftar-pr-firmware-v36.md).
 #define FLASH_CS_PIN 25
 
-// Latch daya -- ESP32 HARUS drive pin ini HIGH sesaat setelah boot supaya board
-// tidak mati sendiri saat tombol power dilepas (lihat Q3 di audit-net-ic-pcb-produksi.md).
-#define POWER_HOLD_PIN 12
+// PCB V2: TIDAK ada latch POWER_HOLD (IO12 tidak tersambung). Daya dari IP5306 (U1).
+#define TFT_BL_PIN   14   // net TFT_BL -> gate Q5 (low-side LED-K), R38 pull-down: LOW = layar gelap
+#define GPS_LED_PIN   4   // net GPS_FIX_LED -> R11 -> D1
+#define PCF_INT_PIN  13   // net PCF_INT (R9 pull-up), aktif LOW saat ada tombol berubah -> sumber wake deep sleep
+// Pembagi tegangan baterai R12 (BATT+) / R13 (GND) ke IO36. Nilai resistor TIDAK ada di Gerber;
+// 2.0 = dua resistor sama besar. Ganti sesuai BOM kalau berbeda.
+#ifndef BAT_DIVIDER_V36
+#define BAT_DIVIDER_V36 2.0f
+#endif
 
-// Tombol sekarang lewat I/O expander PCF8574 (I2C), BUKAN GPIO langsung.
-// Nilai di bawah ini index bit P0-P7 pada PCF8574, dicek silang ke netlist PCB asli.
-#define PCF8574_ADDR_V36 0x38
+// Tombol lewat I/O expander PCF8574 (I2C). Index bit P0-P7, dicek ke netlist PCB V2:
+// P0=BTN_POWER (lewat Q4, TERBALIK: 1 = ditekan), P1=UP, P2=DOWN, P3=OK, P4=RIGHT, P5=LEFT.
+// A0-A2 = GND -> 0x20 untuk PCF8574, 0x38 untuk PCF8574A. Alamat dideteksi saat boot.
+static uint8_t pcfAddrV36 = 0x38;
+static bool pcfFoundV36 = false;
 #define PCF_BIT_POWER 0
 #define BTN_UP     1
 #define BTN_DOWN   2
@@ -384,6 +405,12 @@ static void setGpsPort115200V32() {
 static void configureMg90225HzV30();   // V36.2: forward decl eksplisit (dulu bergantung prototype otomatis IDE)
 
 static bool detectAndConfigureGpsV32() {
+  // GPS mungkin sedang mode backup (power off sebelumnya): byte apa pun di UART RX membangunkannya.
+  gpsSerial.setRxBufferSize(4096);
+  gpsSerial.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  for (uint8_t i = 0; i < 16; ++i) gpsSerial.write(0xFF);
+  gpsSerial.flush();
+  delay(120);
   gpsProtocolDetectedV32 = false;
   gpsUbxDetectedV32 = false;
   gpsNmeaDetectedV32 = false;
@@ -788,7 +815,7 @@ static const uint16_t C_BLACK = 0x0000;
 // Dokumentasi Arduino-ESP32: di ESP32 klasik hanya HSPI dan VSPI yang tersedia untuk user.
 // VSPI dipilih karena pin papan ini (SCK=18, MISO=19, MOSI=23) PERSIS pin IO_MUX bawaan VSPI,
 // jadi SPI bisa jalan lewat jalur cepat, bukan lewat GPIO matrix.
-// HSPI tidak dipakai di sini karena sudah dipegang objek sdSpiV31.
+// PCB V2: microSD, flash U7, dan IMU U8 berbagi bus VSPI yang sama ini (CS masing-masing).
 // Papan RS16 produksi memakai ESP32-WROOM-32 (ESP32 KLASIK). BUKAN S3, BUKAN C3/S2.
 // Guard di bawah sengaja bikin compile GAGAL kalau board yang dipilih salah -- lebih baik
 // ditolak dengan pesan jelas daripada diam-diam memilih bus SPI yang keliru seperti bug lama.
@@ -796,7 +823,7 @@ static const uint16_t C_BLACK = 0x0000;
 #if !defined(CONFIG_IDF_TARGET_ESP32)
 #error "BOARD SALAH. Firmware RS16 ini khusus ESP32-WROOM-32 (ESP32 klasik). Pilih 'ESP32 Dev Module' di Tools > Board, jangan varian S3/S2/C3."
 #endif
-SPIClass lcdSPI(VSPI);   // VSPI = satu-satunya pilihan yang benar di sini (HSPI sudah dipakai sdSpiV31)
+SPIClass lcdSPI(VSPI);   // VSPI: pin 18/19/23 = IO_MUX bawaan VSPI
 static uint8_t solidPixelBuffer[256];
 
 // ============================================================
@@ -810,6 +837,20 @@ static uint8_t solidPixelBuffer[256];
 // Setiap penulisan LCD langsung (bitmap menu, top bar) otomatis membatalkan cache baris,
 // sehingga flush berikutnya mengirim layar penuh dan isi LCD selalu konsisten.
 // ============================================================
+// PCB V2 lampu latar PWM (GPIO14 -> Q5). 0 = mati.
+static uint8_t backlightPctV36 = 100;
+static void backlightWriteV36(uint8_t pct){
+  if(pct>100)pct=100;
+  const uint32_t duty=(uint32_t)pct*255UL/100UL;
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  static bool att=false;if(!att){ledcAttach(TFT_BL_PIN,5000,8);att=true;}
+  ledcWrite(TFT_BL_PIN,duty);
+#else
+  static bool att=false;if(!att){ledcSetup(7,5000,8);ledcAttachPin(TFT_BL_PIN,7);att=true;}   // kanal 7: tidak bentrok dengan tone()
+  ledcWrite(7,duty);
+#endif
+}
+
 static uint8_t* fbV36 = nullptr;
 static bool fbActiveV36 = false;
 static bool fbFlushingV36 = false;
@@ -3982,26 +4023,30 @@ static uint8_t selectedMenu = 0;
 // oleh hardware tapi tidak pernah di-poll sama sekali. Dipakai di layar Circuit Running untuk
 // menandai sektor manual, supaya tombol OK bisa dikembalikan fungsinya sebagai "stop sesi"
 // sesuai keputusan desain (lihat laporan-review circuit: "OK lagi saat sesi jalan -> berhenti").
-// Tombol POWER (bit P0) SENGAJA belum ikut dibaca -- selama rework Q4 belum dikerjakan, net
-// BTN_POWER terjepit dioda body ke ~0,4 V sehingga akan terbaca "ditekan terus" dan bisa
-// memicu aksi power berulang. Aktifkan setelah rework fisik selesai (audit-net-ic-pcb-produksi.md).
-static const uint8_t BUTTON_COUNT = 5;
+// PCB V2: tombol POWER (P0) ikut dibaca (index 5). Q4 membalik logika: bit 1 = ditekan.
+static const uint8_t BUTTON_COUNT = 6;
 static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
-  BTN_UP, BTN_DOWN, BTN_OK, BTN_BACK, BTN_RIGHT
+  BTN_UP, BTN_DOWN, BTN_OK, BTN_BACK, BTN_RIGHT, PCF_BIT_POWER
 };
-// Baca 1 byte penuh dari PCF8574 (P0-P7 sekaligus). Gagal baca (I2C error) dianggap
-// "semua tombol tidak ditekan" (0xFF) supaya aman -- tidak ada tombol nyangkut ke-trigger terus.
+// Baca 1 byte penuh dari PCF8574 (P0-P7 sekaligus). Gagal baca (I2C error) = "tidak ada tombol
+// ditekan": bit tombol biasa 1, bit POWER 0 (karena terbalik) -> 0xFE.
 static uint8_t pcf8574ReadV36(){
-  Wire.requestFrom((int)PCF8574_ADDR_V36,(int)1,(int)true);
+  Wire.requestFrom((int)pcfAddrV36,(int)1,(int)true);
   if(Wire.available())return Wire.read();
-  return 0xFF;
+  return 0xFE;
+}
+static bool pcfProbeV36(uint8_t a){Wire.beginTransmission(a);Wire.write(0xFF);return Wire.endTransmission()==0;}
+static void pcfDetectV36(){
+  static const uint8_t cand[16]={0x38,0x20,0x39,0x21,0x3A,0x22,0x3B,0x23,0x3C,0x24,0x3D,0x25,0x3E,0x26,0x3F,0x27};
+  for(uint8_t i=0;i<16;i++)if(pcfProbeV36(cand[i])){pcfAddrV36=cand[i];pcfFoundV36=true;return;}
+  pcfFoundV36=false;
 }
 
-bool buttonLastRaw[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH};
-bool buttonStable[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH};
-bool buttonLongSent[BUTTON_COUNT] = {false, false, false, false, false};
-uint32_t buttonChangedAt[BUTTON_COUNT] = {0, 0, 0, 0, 0};
-uint32_t buttonPressedAt[BUTTON_COUNT] = {0, 0, 0, 0, 0};
+bool buttonLastRaw[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+bool buttonStable[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+bool buttonLongSent[BUTTON_COUNT] = {false, false, false, false, false, false};
+uint32_t buttonChangedAt[BUTTON_COUNT] = {0, 0, 0, 0, 0, 0};
+uint32_t buttonPressedAt[BUTTON_COUNT] = {0, 0, 0, 0, 0, 0};
 static const uint32_t BUTTON_LONG_PRESS_MS_V31 = 2000UL;
 
 enum ButtonEventBits : uint8_t {
@@ -4015,7 +4060,8 @@ static uint8_t pcfStateV36 = 0xFF;
 static void pcfRefreshV36() { pcfStateV36 = pcf8574ReadV36(); }
 
 uint8_t updateButtonEvent(uint8_t index) {
-  const bool rawState = (pcfStateV36 >> BUTTON_PINS[index]) & 0x01;
+  bool rawState = (pcfStateV36 >> BUTTON_PINS[index]) & 0x01;
+  if (BUTTON_PINS[index] == PCF_BIT_POWER) rawState = !rawState;   // Q4 membalik: LOW = ditekan seperti tombol lain
   const uint32_t now = millis();
   uint8_t event = BUTTON_EVENT_NONE;
   if (rawState != buttonLastRaw[index]) { buttonLastRaw[index] = rawState; buttonChangedAt[index] = now; }
@@ -15369,7 +15415,8 @@ enum UiTestScreen : uint8_t {
   UI_APPLICATION_MENU, UI_APPLICATION_WIFI, UI_APPLICATION_PHONE_LINK, UI_APPLICATION_FW_UPDATE, UI_APPLICATION_CONNECTION_INFO,
   UI_SETTINGS_MENU, UI_SETTINGS_DISPLAY, UI_SETTINGS_AUTO_SHUTDOWN, UI_SETTINGS_SOUND, UI_SETTINGS_SYSTEM_INFO,
   UI_DATA_MANAGEMENT, UI_CONFIRM_ACTION,
-  UI_GPS_LOGGER_SETUP   // V36.4 setelan logger ala Qstarz
+  UI_GPS_LOGGER_SETUP,  // V36.4 setelan logger ala Qstarz
+  UI_SELF_TEST          // V36.5 uji komponen PCB V2
 };
 static UiTestScreen uiTestScreen = UI_MAIN_MENU;
 
@@ -15464,7 +15511,7 @@ static uint8_t batteryPercentFromMvV31(uint16_t mv){
 static void updateBatteryV31(bool force=false){
   uint32_t now=millis(); if(!force&&now-batteryLastMsV31<1000)return; batteryLastMsV31=now;
   analogRead(BATTERY_ADC_PIN_V31); delayMicroseconds(300); uint32_t sum=0; const uint8_t N=20;
-  for(uint8_t i=0;i<N;i++){sum+=analogReadMilliVolts(BATTERY_ADC_PIN_V31);delayMicroseconds(150);} float v=(sum/(float)N)*0.002f;
+  for(uint8_t i=0;i<N;i++){sum+=analogReadMilliVolts(BATTERY_ADC_PIN_V31);delayMicroseconds(150);} float v=(sum/(float)N)*0.001f*BAT_DIVIDER_V36;
   if(v>=2.7f&&v<=4.5f){ batteryVoltageV31=batteryValidV31?(batteryVoltageV31*0.8f+v*0.2f):v; batteryValidV31=true;
     batteryPercentV31=batteryPercentFromMvV31((uint16_t)(batteryVoltageV31*1000.0f+0.5f));
     if(batteryPercentV31<=5&&!batteryWarnedV31&&soundLowBatteryV31){batteryWarnedV31=true;startBatteryWarningBeepV31();} if(batteryPercentV31>8)batteryWarnedV31=false;
@@ -15789,7 +15836,7 @@ static void drawBaseV31(const char* title,const char* status=nullptr){
   fillScreen(C_V31_BG); drawTopBarV31(); drawTextV31(14,39,title,C_V31_WHITE,2);
   if(status)drawTextRightV31(306,43,status,C_V31_BLUE,1); drawHLineV31(14,59,292,C_V31_BLUE);
 }
-static void markActivityV31(){ lastActivityMsV31=millis(); if(displaySleepingV31){lcdCommand(0x29);displaySleepingV31=false;screenDirtyV31=true;} }
+static void markActivityV31(){ lastActivityMsV31=millis(); if(displaySleepingV31){lcdCommand(0x29);backlightWriteV36(backlightPctV36);displaySleepingV31=false;screenDirtyV31=true;} }
 
 
 static uint8_t gpsEffectiveUsedSatV36(){
@@ -16193,20 +16240,25 @@ static void flogScanSessionsV36(){
 
 // ---------- microSD optional backend + serial CSV always real ----------
 #if RS16_SD_ENABLED
-SPIClass sdSpiV31(HSPI); static bool sdReadyV31=false; static File sdLogV31;
+static bool sdReadyV31=false; static File sdLogV31;   // PCB V2: kartu di bus SPI bersama (lcdSPI)
 #else
 static bool sdReadyV31=false;
 #endif
 static bool initSdV31(){
 #if RS16_SD_ENABLED
-  sdSpiV31.begin(RS16_SD_SCK_PIN,RS16_SD_MISO_PIN,RS16_SD_MOSI_PIN,RS16_SD_CS_PIN);sdReadyV31=SD.begin(RS16_SD_CS_PIN,sdSpiV31,16000000);return sdReadyV31;
+  pinMode(RS16_SD_CS_PIN,OUTPUT);digitalWrite(RS16_SD_CS_PIN,HIGH);
+  sdReadyV31=SD.begin(RS16_SD_CS_PIN,lcdSPI,20000000);
+  if(!sdReadyV31)sdReadyV31=SD.begin(RS16_SD_CS_PIN,lcdSPI,4000000);   // kartu lambat / kabel panjang
+  Serial.printf("MICRO SD: %s\n",sdReadyV31?"OK":"TIDAK ADA KARTU / GAGAL");
+  return sdReadyV31;
 #else
   sdReadyV31=false;return false;
 #endif
 }
-static void openLoggerFileV31(){
+static void openLoggerFileV31(uint32_t sessionNo){
 #if RS16_SD_ENABLED
-  if(!sdReadyV31)return;char fn[40];if(gpsDateTimeValidV30)snprintf(fn,sizeof(fn),"/LOG_%04u%02u%02u_%02u%02u%02u.CSV",gpsYearV30,gpsMonthV30,gpsDayV30,gpsHourV30,gpsMinuteV30,gpsSecondV30);else snprintf(fn,sizeof(fn),"/RS16_LOG.CSV");sdLogV31=SD.open(fn,FILE_APPEND);if(sdLogV31&&sdLogV31.size()==0)sdLogV31.println("tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps");
+  if(!sdReadyV31)return;char fn[40];snprintf(fn,sizeof(fn),"/RS16_%08lu.CSV",(unsigned long)sessionNo);   // V36.5: nama = Session No.
+  sdLogV31=SD.open(fn,FILE_APPEND);if(sdLogV31&&sdLogV31.size()==0)sdLogV31.println("tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps");
 #endif
 }
 static void closeLoggerFileV31(){
@@ -16587,7 +16639,7 @@ static uint32_t loggerNextSessionNoV36(){
   return no;
 }
 static void loggerResetV31(){memset(&loggerV31,0,sizeof(loggerV31));resetTelemetryV31();}
-static void loggerStartV31(){loggerResetV31();loggerV31.active=true;loggerV31.startTow=gpsITowMsV30;loggerV31.lastSeq=gpsPvtSequenceV30;loggerV31.sessionNo=loggerNextSessionNoV36();loggerV31.popupType=1;loggerV31.popupUntil=millis()+2500;openLoggerFileV31();flogStartSessionV36(loggerV31.sessionNo);Serial.printf("LOGGER SESSION %08lu\n",(unsigned long)loggerV31.sessionNo);Serial.println("tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps");}
+static void loggerStartV31(){loggerResetV31();loggerV31.active=true;loggerV31.startTow=gpsITowMsV30;loggerV31.lastSeq=gpsPvtSequenceV30;loggerV31.sessionNo=loggerNextSessionNoV36();loggerV31.popupType=1;loggerV31.popupUntil=millis()+2500;openLoggerFileV31(loggerV31.sessionNo);flogStartSessionV36(loggerV31.sessionNo);Serial.printf("LOGGER SESSION %08lu\n",(unsigned long)loggerV31.sessionNo);Serial.println("tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps");}
 // V36.2: sesi yang berhenti disimpan ke NVS (dibaca layar HISTORY).
 static void loggerStopV31(){
   const bool was=loggerV31.active;
@@ -16623,6 +16675,9 @@ static void serviceLoggerV31(){
 static void loggerMarkPoiV36(){
   if(!loggerV31.active)return;
   loggerV31.pois++;flogWriteSampleV36(FLOG_TYPE_POI_V36);
+#if RS16_SD_ENABLED
+  if(sdLogV31){char pl[80];snprintf(pl,sizeof(pl),"#POI,%u,%lu,%.7f,%.7f",(unsigned)loggerV31.pois,(unsigned long)gpsITowMsV30,gpsLatitudeV30,gpsLongitudeV30);sdLogV31.println(pl);}
+#endif
   Serial.printf("POI %u,%lu,%.7f,%.7f\n",(unsigned)loggerV31.pois,(unsigned long)gpsITowMsV30,gpsLatitudeV30,gpsLongitudeV30);
   buzzerPlayV31(2400,90);
   loggerV31.popupType=2;loggerV31.popupUntil=millis()+1000;screenDirtyV31=true;
@@ -16765,23 +16820,30 @@ static void serviceWifiV31(){
 // -- backlight tetap 3V3, GPS/ESP32 tetap jalan, baterai terus terkuras sampai habis.
 // Sekarang latch POWER_HOLD dilepas (LOW) sehingga board benar-benar mati. Kalau masih hidup
 // (misal disuplai USB), jatuh ke mode layar mati seperti dulu.
+// PCB V2 (tanpa POWER_HOLD): data disimpan, GPS ke mode backup, LCD + lampu latar mati, ESP32 deep
+// sleep. Arus total jadi sangat kecil sehingga IP5306 mematikan output sendiri (~30 detik).
+// Kalau USB terpasang / IP5306 tetap menyala, tekan tombol apa saja = bangun (restart bersih).
 static void powerOffV36(const char* reason){
   Serial.printf("POWER OFF: %s\n",reason);
-  loggerStopV31();
-  stopWifiV31();
+  loggerStopV31();   // juga flush flash log + tutup file SD
+  wifiUserEnabledV31=false;rs16ServerV31.stop();WiFi.softAPdisconnect(true);WiFi.mode(WIFI_OFF);
   fillScreen(C_V31_BG);
   drawTextCenteredV31(160,100,"POWER OFF",C_V31_WHITE,3);
   drawTextCenteredV31(160,140,reason,C_V31_GRAY,1);
   if(soundFinishV31)buzzerPlayV31(1000,200);
   delay(1200);
-  lcdCommand(0x28);
+  // UBX-RXM-PMREQ v1: backup tanpa batas waktu, paksa, bangun lewat UART RX (dikirim saat boot berikut)
+  {const uint8_t pm[16]={0x00,0,0,0, 0,0,0,0, 0x06,0,0,0, 0x08,0,0,0};sendUbxV30(0x02,0x41,pm,sizeof(pm));}
+  lcdCommand(0x28);lcdCommand(0x10);   // display off + sleep in
+  backlightWriteV36(0);
+  digitalWrite(GPS_LED_PIN,LOW);
+  // tunggu semua tombol dilepas, lalu baca PCF sekali supaya INT kembali HIGH (kalau tidak, langsung bangun)
+  {const uint32_t t0=millis();while(millis()-t0<3000UL){const uint8_t st=pcf8574ReadV36();if((st&0x3E)==0x3E&&!(st&0x01))break;delay(20);}}
+  pcf8574ReadV36();
+  Serial.println("POWER OFF: deep sleep (tekan tombol untuk menyalakan)");
   Serial.flush();
-  digitalWrite(POWER_HOLD_PIN,LOW);
-  delay(2000);
-  // masih hidup -> suplai eksternal (USB). Tidur layar saja.
-  pinMode(POWER_HOLD_PIN,OUTPUT);digitalWrite(POWER_HOLD_PIN,HIGH);
-  Serial.println("POWER OFF: board masih hidup (suplai eksternal?) -> layar dimatikan saja");
-  displaySleepingV31=true;
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PCF_INT_PIN,0);
+  esp_deep_sleep_start();
 }
 
 static void serviceBatteryProtectionV36(){
@@ -16799,7 +16861,7 @@ static void loadSpeed0TargetsV36(){
   {uint16_t t=prefsV31.getUShort("s0t",100);speed0TargetKmh=(t<20)?20:((t>300)?300:t);}
   {uint16_t t=prefsV31.getUShort("s0tm",60);speed0TargetMph=(t<10)?10:((t>190)?190:t);}
 }
-static void loadSettingsV31(){dragRolloutEnabled=prefsV31.getBool("roll",true);if(prefsV31.getBytesLength("cp")==sizeof(customPointM))prefsV31.getBytes("cp",customPointM,sizeof(customPointM));unitMphV31=prefsV31.getBool("mph",false);{uint8_t f=prefsV31.getUChar("frz",0);dragFreezeModeV36=(f>2)?2:f;}loadSpeed0TargetsV36();{uint8_t r=prefsV31.getUChar("grate",1);gnssUpdateRateIdxV36=(r>1)?1:r;}{uint8_t g=prefsV31.getUChar("gsys2",4);/* V36.2 key baru: urutan pilihan sistem berubah */gnssSystemIdxV36=(g>4)?4:g;}loggerAutoStartV31=prefsV31.getBool("lauto",true);circuitAutoLapV31=prefsV31.getBool("calap",true);circuitAutoStartV31=prefsV31.getBool("cast",true);circuitSectorPopupV31=prefsV31.getBool("csp",true);circuitBeepV31=prefsV31.getBool("cbp",true);circuitManualSectorV36=prefsV31.getBool("cman",false);{uint8_t a=prefsV31.getUChar("aoff",3);autoShutdownIndexV31=(a>4)?4:a;}soundCountdownV31=prefsV31.getBool("sndc",true);soundFinishV31=prefsV31.getBool("sndf",true);soundLowBatteryV31=prefsV31.getBool("sndb",true);{uint8_t v=prefsV31.getUChar("lgti",0);logTimeIdxV36=v>5?0:v;v=prefsV31.getUChar("lgdi",0);logDistIdxV36=v>5?0:v;v=prefsV31.getUChar("lgsi",0);logSpeedIdxV36=v>4?0:v;v=prefsV31.getUChar("lgwi",0);logWarnIdxV36=v>6?0:v;}imuOffAxV31=prefsV31.getFloat("oax",0);imuOffAyV31=prefsV31.getFloat("oay",0);imuOffAzV31=prefsV31.getFloat("oaz",0);imuOffGxV31=prefsV31.getFloat("ogx",0);imuOffGyV31=prefsV31.getFloat("ogy",0);imuOffGzV31=prefsV31.getFloat("ogz",0);if(prefsV31.getBytesLength("irot")==sizeof(imuRotV36))prefsV31.getBytes("irot",imuRotV36,sizeof(imuRotV36));
+static void loadSettingsV31(){dragRolloutEnabled=prefsV31.getBool("roll",true);if(prefsV31.getBytesLength("cp")==sizeof(customPointM))prefsV31.getBytes("cp",customPointM,sizeof(customPointM));unitMphV31=prefsV31.getBool("mph",false);{uint8_t f=prefsV31.getUChar("frz",0);dragFreezeModeV36=(f>2)?2:f;}loadSpeed0TargetsV36();{uint8_t r=prefsV31.getUChar("grate",1);gnssUpdateRateIdxV36=(r>1)?1:r;}{uint8_t g=prefsV31.getUChar("gsys2",4);/* V36.2 key baru: urutan pilihan sistem berubah */gnssSystemIdxV36=(g>4)?4:g;}loggerAutoStartV31=prefsV31.getBool("lauto",true);circuitAutoLapV31=prefsV31.getBool("calap",true);circuitAutoStartV31=prefsV31.getBool("cast",true);circuitSectorPopupV31=prefsV31.getBool("csp",true);circuitBeepV31=prefsV31.getBool("cbp",true);circuitManualSectorV36=prefsV31.getBool("cman",false);{uint8_t a=prefsV31.getUChar("aoff",3);autoShutdownIndexV31=(a>4)?4:a;}soundCountdownV31=prefsV31.getBool("sndc",true);soundFinishV31=prefsV31.getBool("sndf",true);soundLowBatteryV31=prefsV31.getBool("sndb",true);{uint8_t v=prefsV31.getUChar("lgti",0);logTimeIdxV36=v>5?0:v;v=prefsV31.getUChar("lgdi",0);logDistIdxV36=v>5?0:v;v=prefsV31.getUChar("lgsi",0);logSpeedIdxV36=v>4?0:v;v=prefsV31.getUChar("lgwi",0);logWarnIdxV36=v>6?0:v;}imuOffAxV31=prefsV31.getFloat("oax",0);imuOffAyV31=prefsV31.getFloat("oay",0);imuOffAzV31=prefsV31.getFloat("oaz",0);imuOffGxV31=prefsV31.getFloat("ogx",0);imuOffGyV31=prefsV31.getFloat("ogy",0);imuOffGzV31=prefsV31.getFloat("ogz",0);if(prefsV31.getBytesLength("irot")==sizeof(imuRotV36))prefsV31.getBytes("irot",imuRotV36,sizeof(imuRotV36));{uint8_t b=prefsV31.getUChar("blpct",100);backlightPctV36=(b<10||b>100)?100:b;}
   // FIX 6 Sep 2026: kredensial OTA sekarang BENAR-BENAR dibaca dari NVS ("otau"/"otap") seperti
   // yang selama ini cuma ditulis di komentar. Kalau key-nya belum pernah diisi, nilai default lama
   // tetap dipakai. Catatan jujur: belum ada menu di layar untuk mengubahnya (belum diminta) --
@@ -17482,14 +17544,60 @@ static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"
 static void drawOtaV31(){drawBaseV31("FIRMWARE UPDATE",otaInProgressV31?"UPDATING":"READY");if(!wifiUserEnabledV31)drawTextCenteredV31(160,92,"WI-FI WILL START",C_V31_BLUE,2);else{char b[30];snprintf(b,sizeof(b),"RECEIVED %lu BYTES",(unsigned long)otaBytesV31);drawTextCenteredV31(160,91,"POST FIRMWARE TO /UPDATE",C_V31_WHITE,1);drawTextCenteredV31(160,123,b,C_V31_TEXT,1);}drawTextCenteredV31(160,165,"192.168.4.1",C_V31_BLUE,2);drawTextCenteredV31(160,206,otaInProgressV31?"DO NOT POWER OFF":"UPDATE READY",otaInProgressV31?C_V31_RED:C_V31_GRAY,1);}
 static void drawConnectionV31(){drawBaseV31("CONNECTION INFO",wifiUserEnabledV31?"ONLINE":"OFFLINE");char a[30],b[30],c[30];snprintf(a,sizeof(a),"WI-FI %s",wifiUserEnabledV31?"ON":"OFF");snprintf(b,sizeof(b),"CLIENT %u",wifiUserEnabledV31?WiFi.softAPgetStationNum():0);snprintf(c,sizeof(c),"OTA BYTES %lu",(unsigned long)otaBytesV31);drawTextV31(34,84,a,C_V31_WHITE,1);drawTextV31(34,115,"SSID RS16_0016",C_V31_WHITE,1);drawTextV31(34,146,"IP 192.168.4.1",C_V31_WHITE,1);drawTextV31(34,177,b,C_V31_WHITE,1);drawTextV31(34,208,c,C_V31_BLUE,1);}
 
-static void drawSettingsMenuV31(){char ao[16],snd[8];uint8_t m=AUTO_SHUTDOWN_MINUTES_V31[autoShutdownIndexV31];if(m)snprintf(ao,sizeof(ao),"%u MIN",m);else snprintf(ao,sizeof(ao),"OFF");boolTextV31(soundCountdownV31||soundFinishV31||soundLowBatteryV31,snd,sizeof(snd));const char* lab[]={"DISPLAY","AUTO SHUTDOWN","SOUND","SYSTEM INFO","UNIT"};const char* val[]={"FIXED 3V3",ao,snd,"DEVICE / VERSION",unitMphV31?"MPH":"KPH"};drawMenuRowsV31("SETTINGS",lab,val,5,settingsSelection);}
-static void drawDisplaySettingsV31(){drawBaseV31("DISPLAY","HARDWARE");drawTextCenteredV31(160,90,"BACKLIGHT FIXED 3V3",C_V31_WHITE,2);drawTextCenteredV31(160,129,"PWM BRIGHTNESS NOT WIRED",C_V31_BLUE,1);drawTextCenteredV31(160,158,"LCD CONTENT IS LIVE",C_V31_TEXT,1);drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
+static void drawSettingsMenuV31(){char ao[16],snd[8];uint8_t m=AUTO_SHUTDOWN_MINUTES_V31[autoShutdownIndexV31];if(m)snprintf(ao,sizeof(ao),"%u MIN",m);else snprintf(ao,sizeof(ao),"OFF");boolTextV31(soundCountdownV31||soundFinishV31||soundLowBatteryV31,snd,sizeof(snd));const char* lab[]={"DISPLAY","AUTO SHUTDOWN","SOUND","SYSTEM INFO","UNIT"};char bl[8];snprintf(bl,sizeof(bl),"%u%%",(unsigned)backlightPctV36);const char* val[]={bl,ao,snd,"DEVICE / VERSION",unitMphV31?"MPH":"KPH"};drawMenuRowsV31("SETTINGS",lab,val,5,settingsSelection);}
+static void drawDisplaySettingsV31(){drawBaseV31("DISPLAY","HARDWARE");{char b[24];snprintf(b,sizeof(b),"BACKLIGHT %u%%",(unsigned)backlightPctV36);drawTextCenteredV31(160,90,b,C_V31_WHITE,2);}drawTextCenteredV31(160,129,"UP / DOWN = KECERAHAN",C_V31_BLUE,1);drawTextCenteredV31(160,158,"LCD CONTENT IS LIVE",C_V31_TEXT,1);drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"COUNTDOWN BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
 static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V31");char gps[28],imu[28],bat[28],sd[34];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");if(sdReadyV31)snprintf(sd,sizeof(sd),"MICRO SD READY");else if(flashReadyV36)snprintf(sd,sizeof(sd),"LOG FLASH %u%% USED",(unsigned)flogUsedPctV36());else snprintf(sd,sizeof(sd),"LOG STORAGE NONE");char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,"DATA MANAGEMENT"};for(uint8_t i=0;i<7;i++)drawTextV31(30,73+i*23,rows[i],i==0?C_V31_GRAY:(i==6?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
+// ---------- V36.5 SELF TEST (SYSTEM INFO, tahan OK 2 dtk) ----------
+// Tiap baris = satu komponen PCB V2, hijau OK / merah GAGAL. Baris TOMBOL: tekan semua tombol satu
+// per satu sampai hijau. Keluar: tahan BACK 2 detik.
+static uint8_t selfTestBtnMaskV36=0;
+static void drawSelfTestV36(){
+  fillScreen(C_V31_BG);drawTopBarV31();
+  drawTextV31(14,41,"SELF TEST",C_V31_WHITE,2);
+  drawHLineV31(14,58,292,C_V31_BLUE);
+  const uint32_t now=millis();
+  const bool uart=gpsLastByteMillisV32&&now-gpsLastByteMillisV32<3000UL;
+  const bool pvt=gpsLastPvtMillisV30&&now-gpsLastPvtMillisV30<1500UL;
+  char v[9][40];bool okr[9];
+  snprintf(v[0],40,"OK  LAMPU %u%%",(unsigned)backlightPctV36);okr[0]=true;
+  if(pcfFoundV36)snprintf(v[1],40,"0X%02X OK",pcfAddrV36);else snprintf(v[1],40,"TIDAK MENJAWAB");okr[1]=pcfFoundV36;
+  v[2][0]=0;okr[2]=(selfTestBtnMaskV36&0x3F)==0x3F;
+  if(!uart)snprintf(v[3],40,"TIDAK ADA DATA");
+  else snprintf(v[3],40,"%lu %s %.1f/%u HZ%s",(unsigned long)gpsActiveBaudV32,gpsUbxDetectedV32?"UBX":"NMEA",gpsActualRateHzV30,(unsigned)gnssRateHzV36(),gpsCfgNakCountV36?" NAK":"");
+  okr[3]=uart&&pvt&&gpsActualRateHzV30>=gnssRateHzV36()*0.8f&&!gpsCfgNakCountV36;
+  snprintf(v[4],40,"%s SAT %u USED %u",gpsReadyLatchedV35?"3D FIX":"MENCARI",(unsigned)gpsSatViewCountV32,(unsigned)gpsEffectiveUsedSatV36());okr[4]=gpsReadyLatchedV35;
+  if(imuConnectedV31)snprintf(v[5],40,"%s OK",imuChipNameV36());else snprintf(v[5],40,"TIDAK ADA");okr[5]=imuConnectedV31;
+  if(flashReadyV36)snprintf(v[6],40,"JEDEC %06lX %u%%",(unsigned long)flashJedecV36,(unsigned)flogUsedPctV36());else snprintf(v[6],40,"TIDAK ADA");okr[6]=flashReadyV36;
+  snprintf(v[7],40,"%s",sdReadyV31?"OK":"TIDAK ADA KARTU");okr[7]=sdReadyV31;
+  if(batteryValidV31)snprintf(v[8],40,"%.2f V %u%%",batteryVoltageV31,(unsigned)batteryPercentV31);else snprintf(v[8],40,"TIDAK TERBACA");okr[8]=batteryValidV31;
+  static const char* const LAB[9]={"LCD","PCF8574","TOMBOL","GPS UART","GPS FIX","IMU","FLASH LOG","MICRO SD","BATERAI"};
+  for(uint8_t i=0;i<9;i++){
+    const int16_t y=64+i*18;
+    drawTextV31(18,y,LAB[i],C_V31_GRAY,1);
+    if(i==2){
+      static const char* const BT[6]={"UP","DN","OK","LF","RT","PW"};
+      for(uint8_t b=0;b<6;b++)drawTextV31(118+b*31,y,BT[b],(selfTestBtnMaskV36&(1u<<b))?C_V31_GREEN:C_V31_DARK,1);
+    }else drawTextRightV31(302,y,v[i],okr[i]?C_V31_GREEN:C_V31_RED,1);
+  }
+  drawTextCenteredV31(160,228,"TEKAN SEMUA TOMBOL  -  TAHAN BACK = KELUAR",C_V31_GRAY,1);
+}
+static void printSelfTestV36(){
+  Serial.println("===== RS16 SELF TEST (PCB V2) =====");
+  Serial.printf("PCF8574   : %s 0x%02X\n",pcfFoundV36?"OK":"GAGAL",pcfAddrV36);
+  Serial.printf("GPS UART  : baud %lu %s rate %.1f/%u Hz, ACK %u NAK %u, checksum err %lu\n",(unsigned long)gpsActiveBaudV32,gpsUbxDetectedV32?"UBX":(gpsNmeaDetectedV32?"NMEA":"-"),gpsActualRateHzV30,(unsigned)gnssRateHzV36(),(unsigned)gpsCfgAckCountV36,(unsigned)gpsCfgNakCountV36,(unsigned long)gpsChecksumErrorsV30);
+  Serial.printf("GPS FIX   : %s fix %u sat %u used %u hacc %.2f m\n",gpsReadyLatchedV35?"READY":"BELUM",(unsigned)gpsFixTypeV30,(unsigned)gpsSatViewCountV32,(unsigned)gpsEffectiveUsedSatV36(),gpsHorizontalAccuracyM_V30);
+  Serial.printf("IMU       : %s (WHO 0x%02X)\n",imuConnectedV31?imuChipNameV36():"GAGAL",imuWhoV31);
+  Serial.printf("FLASH LOG : %s JEDEC %06lX used %u%%\n",flashReadyV36?"OK":"GAGAL",(unsigned long)flashJedecV36,(unsigned)flogUsedPctV36());
+  Serial.printf("MICRO SD  : %s\n",sdReadyV31?"OK":"TIDAK ADA KARTU");
+  Serial.printf("BATERAI   : %s %.2f V (divider %.2f)\n",batteryValidV31?"OK":"GAGAL",batteryVoltageV31,BAT_DIVIDER_V36);
+  Serial.printf("LAMPU LCD : %u%%   heap %u\n",(unsigned)backlightPctV36,(unsigned)ESP.getFreeHeap());
+  buzzerPlayV31(2000,150);
+}
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST","FLASH / SD LOGS","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
 static void drawConfirmV31(){drawBaseV31("CONFIRM ACTION","SAFETY");const char* a[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};drawTextCenteredV31(160,92,a[confirmActionV31],C_V31_RED,2);drawTextCenteredV31(160,139,"HOLD OK 2 SEC TO CONFIRM",C_V31_WHITE,1);drawTextCenteredV31(160,168,"CANCEL AVAILABLE",C_V31_BLUE,1);}
 static void deleteGpsLogsV31(){
@@ -17498,7 +17606,8 @@ static void deleteGpsLogsV31(){
     flogEraseAllV36();
   }
 #if RS16_SD_ENABLED
-  if(!sdReadyV31)return;File root=SD.open("/");if(!root)return;File f=root.openNextFile();while(f){String name=f.name();bool dir=f.isDirectory();f.close();if(!dir&&(name.startsWith("/LOG_")||name=="/RS16_LOG.CSV"))SD.remove(name);f=root.openNextFile();}root.close();
+  if(!sdReadyV31)return;File root=SD.open("/");if(!root)return;File f=root.openNextFile();while(f){String name=f.name();if(!name.startsWith("/"))name="/"+name;   // core 2.x+: name() tanpa '/'
+  bool dir=f.isDirectory();f.close();if(!dir&&(name.startsWith("/LOG_")||name.startsWith("/RS16_")))SD.remove(name);f=root.openNextFile();}root.close();
 #endif
 }
 // V36.2: DELETE HISTORY dulu cuma mengosongkan buffer RAM telemetry; BEST/LAST tetap ada.
@@ -17585,8 +17694,19 @@ static void serviceGpsLockPopupV36(){
 
 static void handleButtonsV31(){
   pcfRefreshV36();
-  uint8_t up=updateButtonEvent(0),down=updateButtonEvent(1),ok=updateButtonEvent(2),back=updateButtonEvent(3),right=updateButtonEvent(4);if(up||down||ok||back||right)markActivityV31();
+  uint8_t up=updateButtonEvent(0),down=updateButtonEvent(1),ok=updateButtonEvent(2),back=updateButtonEvent(3),right=updateButtonEvent(4),pwr=updateButtonEvent(5);
+  // Tombol POWER yang masih ditahan sejak menyalakan device diabaikan sampai dilepas sekali.
+  static bool pwrArmedV36=false;if(buttonStable[5]==HIGH)pwrArmedV36=true;else if(!pwrArmedV36)pwr=0;
+  if(up||down||ok||back||right||pwr)markActivityV31();
   if(displaySleepingV31)return;
+  if(uiTestScreen==UI_SELF_TEST){
+    const uint8_t ev[6]={up,down,ok,back,right,pwr};
+    for(uint8_t i=0;i<6;i++)if(ev[i]){selfTestBtnMaskV36|=(uint8_t)(1u<<i);buzzerPlayV31(2200,40);screenDirtyV31=true;}
+    if(back&BUTTON_EVENT_LONG){uiTestScreen=UI_SETTINGS_SYSTEM_INFO;screenDirtyV31=true;}
+    return;
+  }
+  // PCB V2: tahan POWER 2 detik = power off rapi (simpan log dulu). Klik dua kali = IP5306 mati langsung (hardware).
+  if((pwr&BUTTON_EVENT_LONG)&&!otaInProgressV31){powerOffV36("POWER BUTTON");return;}
   if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT)moveMainV31(-1);if(down&BUTTON_EVENT_SHORT)moveMainV31(1);if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
   if(uiTestScreen==UI_DRAG_PAGE1||uiTestScreen==UI_DRAG_PAGE2){
     if(up&BUTTON_EVENT_SHORT)moveDragV31(-1);
@@ -17913,10 +18033,18 @@ if(uiTestScreen==UI_ACCEL_CAL_MENU){
   if(uiTestScreen==UI_APPLICATION_PHONE_LINK||uiTestScreen==UI_APPLICATION_CONNECTION_INFO){if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_APPLICATION_FW_UPDATE){if(back&BUTTON_EVENT_SHORT&&!otaInProgressV31){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_SETTINGS_MENU){if(up&BUTTON_EVENT_SHORT)settingsSelection=settingsSelection?settingsSelection-1:4;if(down&BUTTON_EVENT_SHORT)settingsSelection=(settingsSelection+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){if(settingsSelection==4){unitMphV31=!unitMphV31;saveSettingsV31();screenDirtyV31=true;}else{uiTestScreen=(UiTestScreen)(UI_SETTINGS_DISPLAY+settingsSelection);soundSelV36=0;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}return;}
-  if(uiTestScreen==UI_SETTINGS_DISPLAY){if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
+  if(uiTestScreen==UI_SETTINGS_DISPLAY){
+    if((up|down)&BUTTON_EVENT_SHORT){
+      if(up&BUTTON_EVENT_SHORT)backlightPctV36=backlightPctV36>=90?100:backlightPctV36+10;
+      if(down&BUTTON_EVENT_SHORT)backlightPctV36=backlightPctV36<=20?10:backlightPctV36-10;   // min 10% supaya layar tidak "hilang"
+      backlightWriteV36(backlightPctV36);screenDirtyV31=true;
+    }
+    if((ok|back)&BUTTON_EVENT_SHORT){prefsV31.putUChar("blpct",backlightPctV36);uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}
+    return;
+  }
   if(uiTestScreen==UI_SETTINGS_AUTO_SHUTDOWN){if(up&BUTTON_EVENT_SHORT)autoShutdownIndexV31=autoShutdownIndexV31?autoShutdownIndexV31-1:4;if(down&BUTTON_EVENT_SHORT)autoShutdownIndexV31=(autoShutdownIndexV31+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){saveSettingsV31();uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){{uint8_t a=prefsV31.getUChar("aoff",3);autoShutdownIndexV31=(a>4)?4:a;}uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_SETTINGS_SOUND){uint8_t& ss=soundSelV36;if(up&BUTTON_EVENT_SHORT)ss=ss?ss-1:2;if(down&BUTTON_EVENT_SHORT)ss=(ss+1)%3;if(ok&BUTTON_EVENT_SHORT){if(ss==0)soundCountdownV31=!soundCountdownV31;else if(ss==1)soundFinishV31=!soundFinishV31;else soundLowBatteryV31=!soundLowBatteryV31;saveSettingsV31();}if((up|down|ok)&BUTTON_EVENT_SHORT){screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){settingsSelection=2;uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
-  if(uiTestScreen==UI_SETTINGS_SYSTEM_INFO){if(ok&BUTTON_EVENT_SHORT){uiTestScreen=UI_DATA_MANAGEMENT;dataSelectionV31=0;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
+  if(uiTestScreen==UI_SETTINGS_SYSTEM_INFO){if(ok&BUTTON_EVENT_LONG){selfTestBtnMaskV36=0;uiTestScreen=UI_SELF_TEST;buzzerPlayV31(1500,120);screenDirtyV31=true;return;}if(ok&BUTTON_EVENT_SHORT){uiTestScreen=UI_DATA_MANAGEMENT;dataSelectionV31=0;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_DATA_MANAGEMENT){if(up&BUTTON_EVENT_SHORT)dataSelectionV31=dataSelectionV31?dataSelectionV31-1:4;if(down&BUTTON_EVENT_SHORT)dataSelectionV31=(dataSelectionV31+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){confirmActionV31=dataSelectionV31;uiTestScreen=UI_CONFIRM_ACTION;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_SETTINGS_SYSTEM_INFO;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_CONFIRM_ACTION){if(ok&BUTTON_EVENT_LONG)executeConfirmV31();if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_DATA_MANAGEMENT;screenDirtyV31=true;}return;}
 }
@@ -17948,6 +18076,7 @@ static bool periodicUiV31(){
     case UI_GNSS_MENU:
     case UI_GNSS_COLDSTART:
     case UI_GPS_SATELLITE:
+    case UI_SELF_TEST:
       return true;
     default:
       return false;
@@ -17993,6 +18122,7 @@ static void renderDynamicV31(bool force=false){
     case UI_GPS_LOGGER_FINISH:drawLoggerFinishV31();break;
     case UI_GPS_LOGGER_INFO:drawLoggerInfoV31();break;
     case UI_GPS_LOGGER_SETUP:drawLoggerSetupV36();break;
+    case UI_SELF_TEST:drawSelfTestV36();break;
     case UI_ACCEL_GMETER:drawGmeterV31();break;
     case UI_ACCEL_CAL_RUNNING:drawImuCalRunningV31();break;
     case UI_ACCEL_SENSOR_INFO:drawImuInfoV31();break;
@@ -18051,6 +18181,14 @@ static void serviceAutoShutdownV31(){uint8_t mins=AUTO_SHUTDOWN_MINUTES_V31[auto
 // Aman untuk engine pengukuran: serviceDragV31()/serviceCircuitV31()/serviceLoggerV31() hanya
 // bekerja saat ada paket PVT BARU (dijaga pembanding nomor urut), jadi nilai nol ini tidak akan
 // pernah ikut terhitung sebagai data race.
+// PCB V2 LED GPS FIX (GPIO4): nyala = GPS READY, kedip 1 Hz = data GPS ada tapi belum lock, mati = tidak ada data.
+static void serviceGpsLedV36(){
+  static uint32_t last=0;const uint32_t now=millis();if(now-last<50UL)return;last=now;
+  bool on=false;
+  if(gpsReadyLatchedV35)on=true;
+  else if(gpsLastByteMillisV32&&now-gpsLastByteMillisV32<3000UL)on=((now/500UL)&1UL)!=0;
+  digitalWrite(GPS_LED_PIN,on?HIGH:LOW);
+}
 static void serviceGpsStaleSpeedV36(){
   if(gpsLastPvtMillisV30==0)return;
   if(millis()-gpsLastPvtMillisV30>1500UL && gpsSpeedKmhV30!=0.0f){gpsSpeedKmhV30=0.0f;screenDirtyV31=true;}
@@ -18082,6 +18220,7 @@ static void serviceSerialCommandsV31(){static String cmd;while(Serial.available(
   else if(cmd=="wifipass off"){apPassV36="";prefsV31.remove("appw");wifiApRestartAtV36=millis()+200;Serial.println("WIFI SANDI DIHAPUS (terbuka)");}
   else if(cmd.startsWith("wifipass ")){String v=cmd.substring(9);v.trim();if(v.length()>=8&&v.length()<=63){apPassV36=v;prefsV31.putString("appw",v.c_str());wifiApRestartAtV36=millis()+200;Serial.println("WIFI SANDI OK (juga untuk OTA & log)");}else Serial.println("WIFI SANDI: 8-63 karakter, atau 'wifipass off'");}
   else if(cmd.startsWith("otauser ")){String v=cmd.substring(8);v.trim();if(v.length()>=1){otaUserV36=v;prefsV31.putString("otau",v.c_str());Serial.println("OTA USER OK");}}
+  else if(cmd=="selftest")printSelfTestV36();
   else if(cmd=="flash")Serial.printf("FLASH LOG %s JEDEC=%06lX USED=%lu (%u%%) SESI=%u NAK=%u\n",flashReadyV36?"OK":"OFF",(unsigned long)flashJedecV36,(unsigned long)flogWriteAddrV36,(unsigned)flogUsedPctV36(),(unsigned)flogSessionV36,(unsigned)gpsCfgNakCountV36);
   cmd="";}else if(cmd.length()<64)cmd+=c;}}
 
@@ -18091,9 +18230,11 @@ static void serviceSerialCommandsV31(){static String cmd;while(Serial.available(
 #define BOOTMARK_V36(step) do{ Serial.print("BOOT> "); Serial.println(step); Serial.flush(); }while(0)
 
 void setup(){
-  // V36.2: latch daya DIKUNCI PALING AWAL. Dulu baru setelah Serial + delay(400) -> tombol power
-  // harus ditahan >0,4 s atau board mati lagi.
-  pinMode(POWER_HOLD_PIN,OUTPUT);digitalWrite(POWER_HOLD_PIN,HIGH);
+  // PCB V2: tidak ada latch daya. Lampu latar dimatikan dulu sampai LCD selesai init (tidak ada kedip sampah).
+  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,LOW);
+  pinMode(GPS_LED_PIN,OUTPUT);digitalWrite(GPS_LED_PIN,LOW);
+  pinMode(RS16_SD_CS_PIN,OUTPUT);digitalWrite(RS16_SD_CS_PIN,HIGH);   // kartu SD jangan ikut mendorong MISO
+  pinMode(PCF_INT_PIN,INPUT_PULLUP);
   Serial.begin(115200);delay(400);
   Serial.println();
   BOOTMARK_V36("00 serial hidup");
@@ -18105,16 +18246,15 @@ void setup(){
   pinMode(ICM_CS_PIN,OUTPUT);digitalWrite(ICM_CS_PIN,HIGH);   // IMU ICM-42688-P share bus SPI dengan TFT, CS sendiri
   pinMode(FLASH_CS_PIN,OUTPUT);digitalWrite(FLASH_CS_PIN,HIGH); // flash U7 dijamin non-aktif -- jangan sampai ikut mendorong SPI_MISO
   BOOTMARK_V36("02 pin CS IMU + flash siap");
-  pinMode(POWER_HOLD_PIN,OUTPUT);digitalWrite(POWER_HOLD_PIN,HIGH); // latch daya -- wajib HIGH sesaat setelah boot (lihat Q3, audit-net-ic-pcb-produksi.md)
-  BOOTMARK_V36("03 POWER_HOLD (GPIO12) HIGH");
+  BOOTMARK_V36("03 PCB V2: daya via IP5306, tanpa POWER_HOLD");
   lcdSPI.begin(TFT_SCLK,TFT_MISO,TFT_MOSI,TFT_CS);   // bus SPI dinyalakan duluan -- dipakai IMU di initImuV31() di bawah
   BOOTMARK_V36("04 SPI hidup");
   fbV36=(uint8_t*)heap_caps_malloc((size_t)LCD_W*LCD_H,MALLOC_CAP_8BIT);
   Serial.printf("BOOT> 04b framebuffer %s (heap %u)\n",fbV36?"OK":"GAGAL -> gambar langsung",(unsigned)ESP.getFreeHeap());
   Wire.begin(MPU_SDA_PIN_V31,MPU_SCL_PIN_V31,100000);  // V36.2: PCF8574/PCF8574A maks 100 kHz (dulu 400 kHz, di luar spek)  // I2C sekarang cuma untuk PCF8574 (tombol)
   BOOTMARK_V36("05 I2C hidup");
-  Wire.beginTransmission(PCF8574_ADDR_V36);Wire.write(0xFF);uint8_t pcfErr=Wire.endTransmission(); // set semua pin PCF8574 sbg input
-  Serial.printf("BOOT> 06 PCF8574 0x%02X -> %s (kode %u)\n",PCF8574_ADDR_V36,pcfErr==0?"TERDETEKSI":"TIDAK MENJAWAB",(unsigned)pcfErr);
+  pcfDetectV36();   // 0x20 (PCF8574) / 0x38 (PCF8574A), semua pin jadi input
+  Serial.printf("BOOT> 06 PCF8574 0x%02X -> %s\n",pcfAddrV36,pcfFoundV36?"TERDETEKSI":"TIDAK MENJAWAB");
   Serial.flush();
   pinMode(BUZZER_PIN_V31,OUTPUT);digitalWrite(BUZZER_PIN_V31,LOW);
   pinMode(BATTERY_ADC_PIN_V31,INPUT);analogReadResolution(12);analogSetPinAttenuation(BATTERY_ADC_PIN_V31,ADC_11db);
@@ -18132,7 +18272,7 @@ void setup(){
   initImuV31();Serial.printf("BOOT> 11 IMU = %s (%s)\n",imuChipNameV36(),imuConnectedV31?"TERDETEKSI":"TIDAK TERDETEKSI");Serial.flush();
   updateBatteryV31(true);Serial.printf("BOOT> 12 baterai = %.2f V\n",batteryVoltageV31);Serial.flush();
   lcdInit();BOOTMARK_V36("13 LCD di-init");
-  drawOpening();BOOTMARK_V36("14 opening screen digambar");
+  drawOpening();backlightWriteV36(backlightPctV36);BOOTMARK_V36("14 opening screen digambar + lampu latar");
   detectAndConfigureGpsV32();BOOTMARK_V36("15 GPS selesai dideteksi");
   initSdV31();initFlashLogV36();BOOTMARK_V36("16 storage dicek");
   drawSelectedMenu(selectedMenu);lastActivityMsV31=millis();BOOTMARK_V36("17 menu utama digambar");
@@ -18147,5 +18287,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsLedV36();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }
