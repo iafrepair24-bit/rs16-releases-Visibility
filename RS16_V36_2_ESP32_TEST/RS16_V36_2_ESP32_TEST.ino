@@ -2,17 +2,23 @@
   RS16 V36.2 ESP32-TEST (25 Okt 2026) -- varian uji di ESP32 DevKit (WROOM-32) langsung:
   - RS16_ESP32_TEST = 1 : komponen uji. Set ke 0 untuk kembali ke PCB produksi (semua kode
     produksi tetap ada, tidak ada fungsi yang dihapus).
-  - LCD   : ILI9341 2.8" 320x240 SPI -- pin TETAP (MOSI 23, SCLK 18, MISO 19, CS 27, DC 32, RST 33, LED 3V3)
-  - GPS   : MG-902 25 Hz UART1 115200 -- pin TETAP (ESP RX 17 <- GPS TX, ESP TX 16 -> GPS RX)
-  - IMU   : MPU6050 I2C (SDA 21, SCL 22, alamat 0x68/0x69), +-4 g / +-500 dps, 200 Hz.
+  - Wiring uji MENGIKUTI PCB V2 100x55 (RS16_V2_KICAD) untuk semua GPIO yang sama fungsinya:
+  - LCD   : ILI9341 2.8" 320x240 SPI (MOSI 23, SCLK 18, MISO 19, CS 27, DC 32, RST 33),
+            backlight enable GPIO14 (= TFT_BL di V2, HIGH saat boot)
+  - GPS   : MG-902 25 Hz UART1 115200, VCC 5V (ESP RX 17 <- GPS TX, ESP TX 16 -> GPS RX)
+  - IMU   : MPU6050 I2C (SDA 21, SCL 22, alamat 0x68/0x69) = header J_I2C1 di V2, +-4 g / +-500 dps, 200 Hz.
             ICM-42688/LSM6DS3 SPI tidak di-probe (GPIO5 dipakai tombol).
-  - Tombol: 6 tombol langsung ke GPIO, sisi lain ke GND (INPUT_PULLUP internal):
-              UP=13  DOWN=14  OK=26  BACK/LEFT=5  RIGHT=25  POWER=4
+  - Tombol: 6 tombol langsung ke GPIO, sisi lain ke GND (di V2 lewat PCF8574, jadi dipakai GPIO
+            yang di V2 tidak terpakai saat uji: PCF_INT 13, flash CS 25, ICM CS 5, 34/35/39 bebas):
+              UP=13  DOWN=25  OK=5        -> pull-up internal
+              BACK/LEFT=35  RIGHT=39  POWER=34 -> WAJIB resistor pull-up 10k ke 3V3 (input-only)
             POWER: tekan singkat = layar off/on, tahan 2 detik = power off (deep sleep,
             bangun lagi dengan menekan POWER).
-  - Baterai: Li-ion 1S 2300 mAh -> pembagi tegangan 100k/100k ke GPIO36 (VP). Persen dihitung
-            dari tegangan (kurva 4.20 V..3.20 V), kapasitas mAh tidak mengubah rumus.
-  - Buzzer : GPIO15 (tetap).  POWER_HOLD GPIO12 & flash CS GPIO25 tidak dipakai di mode uji.
+  - Baterai: Li-ion 1S 2300 mAh -> 100k/100k + 100nF ke GPIO36 (VP), sama dengan R12/R13/C13 di V2.
+            Persen dihitung dari tegangan (kurva 4.20 V..3.20 V), kapasitas mAh tidak mengubah rumus.
+  - Buzzer : GPIO15 -> 1k -> basis 2N2222 (sama dengan R10/Q1 di V2).
+  - Dicadangkan sesuai V2 (belum dipakai firmware): GPIO4 LED GPS, GPIO26 microSD CS.
+  - POWER_HOLD GPIO12 tidak dipakai di mode uji (di V2 juga tidak tersambung).
 
   RS16 V36.2 (16 Okt 2026) -- perubahan dari V36.1 UPDATE-7:
   - Layar GNSS ala Qstarz LT-8000 (warna tetap RS16): GNSS STATUS = bar sinyal C/N0 per
@@ -131,7 +137,7 @@ struct ScreenEraseRun;
 #define TFT_RST  33
 // PCB V2 100x55 (RS16_V2_KICAD): backlight LCD lewat Q5 (2N7002) di sisi LED-K, gate = GPIO14
 // dengan pull-down R38 100k -> TANPA GPIO14 HIGH layar gelap. Di revisi PCB lama GPIO14 = ICM_AUX_CS
-// yang tidak terpakai, jadi drive HIGH aman untuk dua-duanya. Mode uji DevKit: LED LCD langsung 3V3.
+// yang tidak terpakai, jadi drive HIGH aman untuk dua-duanya. Mode uji: sama (GPIO14 bebas dari tombol).
 #define TFT_BL_PIN 14
 
 // Chip-select IMU ICM-42688-P (SPI, bus sama dengan TFT di atas).
@@ -154,13 +160,15 @@ struct ScreenEraseRun;
 
 #if RS16_ESP32_TEST
 // Tombol langsung ke GPIO (aktif LOW, INPUT_PULLUP). Nilai di bawah = nomor GPIO.
-// Semua pin punya pull-up internal; POWER di GPIO4 (RTC GPIO) supaya bisa membangunkan deep sleep.
+// Pin dipilih dari GPIO yang di PCB V2 tidak terpakai saat uji, supaya pin lain (LCD/BL/GPS/LED/SD)
+// tetap sama persis dengan V2. 13/25/5 pakai pull-up internal; 34/35/39 input-only TANPA pull-up
+// internal -> wajib resistor 10k ke 3V3. POWER di GPIO34 (RTC GPIO) supaya bisa membangunkan deep sleep.
 #define BTN_UP     13
-#define BTN_DOWN   14
-#define BTN_OK     26
-#define BTN_RIGHT  25
-#define BTN_BACK   5   // = tombol LEFT fisik, dipetakan jadi BACK di logika menu
-#define BTN_POWER  4
+#define BTN_DOWN   25
+#define BTN_OK     5
+#define BTN_RIGHT  39
+#define BTN_BACK   35  // = tombol LEFT fisik, dipetakan jadi BACK di logika menu
+#define BTN_POWER  34
 #else
 // Tombol sekarang lewat I/O expander PCF8574 (I2C), BUKAN GPIO langsung.
 // Nilai di bawah ini index bit P0-P7 pada PCF8574, dicek silang ke netlist PCB asli.
@@ -15901,7 +15909,7 @@ static bool initImuV31(){
   // Chip aktual di PCB produksi = ICM-42688-P (InvenSense/TDK) lewat SPI. Dicek duluan.
   uint8_t who=icmReadRegV36(0x75);   // WHO_AM_I, harus 0x47
 #else
-  uint8_t who=0x00;                  // mode uji: tidak ada IMU SPI (GPIO5 = tombol BACK)
+  uint8_t who=0x00;                  // mode uji: tidak ada IMU SPI (GPIO5 = tombol OK)
 #endif
   if(who==0x47){
     imuWhoV31=who;imuTypeV36=IMU_TYPE_ICM42688_V36;
@@ -16349,7 +16357,7 @@ static void powerOffV36(const char* reason){
   lcdCommand(0x10);   // ILI9341 SLEEP IN
   while(digitalRead(BTN_POWER)==LOW)delay(10);   // tunggu tombol dilepas, kalau tidak langsung bangun lagi
   delay(50);
-  rtc_gpio_pullup_en((gpio_num_t)BTN_POWER);rtc_gpio_pulldown_dis((gpio_num_t)BTN_POWER);
+  if(BTN_POWER<34){rtc_gpio_pullup_en((gpio_num_t)BTN_POWER);rtc_gpio_pulldown_dis((gpio_num_t)BTN_POWER);}   // GPIO34-39: pakai pull-up 10k eksternal
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_POWER,0);
   Serial.println("POWER OFF: deep sleep, tekan POWER untuk menyalakan");Serial.flush();
   esp_deep_sleep_start();
@@ -17556,9 +17564,7 @@ void setup(){
                 (int)esp_reset_reason(),(int)getCpuFrequencyMhz(),(unsigned)ESP.getFreeHeap());
   Serial.flush();
   pinMode(TFT_CS,OUTPUT);pinMode(TFT_DC,OUTPUT);pinMode(TFT_RST,OUTPUT);digitalWrite(TFT_CS,HIGH);digitalWrite(TFT_DC,HIGH);digitalWrite(TFT_RST,HIGH);
-#if !RS16_ESP32_TEST
-  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,HIGH);   // backlight ON (PCB V2: Q5/TFT_BL)
-#endif
+  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,HIGH);   // backlight ON (PCB V2: Q5/TFT_BL; uji: transistor BL atau LED langsung 3V3)
   BOOTMARK_V36("01 pin TFT siap");
 #if RS16_HAS_SPI_IMU_FLASH
   pinMode(ICM_CS_PIN,OUTPUT);digitalWrite(ICM_CS_PIN,HIGH);   // IMU ICM-42688-P share bus SPI dengan TFT, CS sendiri
