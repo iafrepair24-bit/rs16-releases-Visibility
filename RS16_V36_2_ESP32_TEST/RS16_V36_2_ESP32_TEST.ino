@@ -16355,7 +16355,7 @@ static void powerOffV36(const char* reason){
 #else
   // Mode uji DevKit: tidak ada latch daya -> deep sleep. Bangun (reboot) dengan tombol POWER.
   lcdCommand(0x10);   // ILI9341 SLEEP IN
-  while(digitalRead(BTN_POWER)==LOW)delay(10);   // tunggu tombol dilepas, kalau tidak langsung bangun lagi
+  {const uint32_t t0=millis();while(digitalRead(BTN_POWER)==LOW&&millis()-t0<5000UL)delay(10);}   // tunggu tombol dilepas (maks 5 dtk), kalau tidak langsung bangun lagi
   delay(50);
   if(BTN_POWER<34){rtc_gpio_pullup_en((gpio_num_t)BTN_POWER);rtc_gpio_pulldown_dis((gpio_num_t)BTN_POWER);}   // GPIO34-39: pakai pull-up 10k eksternal
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_POWER,0);
@@ -17586,7 +17586,7 @@ void setup(){
 #if RS16_ESP32_TEST
   Wire.begin(MPU_SDA_PIN_V31,MPU_SCL_PIN_V31,400000);  // mode uji: I2C cuma MPU6050 (maks 400 kHz) -- baca 14 byte @200 Hz
   BOOTMARK_V36("05 I2C hidup (MPU6050)");
-  for(uint8_t i=0;i<BUTTON_COUNT;i++)pinMode(BUTTON_PINS[i],INPUT_PULLUP);
+  for(uint8_t i=0;i<BUTTON_COUNT;i++)pinMode(BUTTON_PINS[i],BUTTON_PINS[i]>=34?INPUT:INPUT_PULLUP);   // 34-39: pull-up 10k eksternal
   Serial.printf("BOOT> 06 tombol GPIO UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (INPUT_PULLUP)\n",
                 BTN_UP,BTN_DOWN,BTN_OK,BTN_BACK,BTN_RIGHT,BTN_POWER);
 #else
