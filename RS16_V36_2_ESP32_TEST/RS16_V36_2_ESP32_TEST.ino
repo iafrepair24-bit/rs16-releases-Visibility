@@ -129,6 +129,10 @@ struct ScreenEraseRun;
 #define TFT_CS   27
 #define TFT_DC   32
 #define TFT_RST  33
+// PCB V2 100x55 (RS16_V2_KICAD): backlight LCD lewat Q5 (2N7002) di sisi LED-K, gate = GPIO14
+// dengan pull-down R38 100k -> TANPA GPIO14 HIGH layar gelap. Di revisi PCB lama GPIO14 = ICM_AUX_CS
+// yang tidak terpakai, jadi drive HIGH aman untuk dua-duanya. Mode uji DevKit: LED LCD langsung 3V3.
+#define TFT_BL_PIN 14
 
 // Chip-select IMU ICM-42688-P (SPI, bus sama dengan TFT di atas).
 #define ICM_CS_PIN 5
@@ -17552,6 +17556,9 @@ void setup(){
                 (int)esp_reset_reason(),(int)getCpuFrequencyMhz(),(unsigned)ESP.getFreeHeap());
   Serial.flush();
   pinMode(TFT_CS,OUTPUT);pinMode(TFT_DC,OUTPUT);pinMode(TFT_RST,OUTPUT);digitalWrite(TFT_CS,HIGH);digitalWrite(TFT_DC,HIGH);digitalWrite(TFT_RST,HIGH);
+#if !RS16_ESP32_TEST
+  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,HIGH);   // backlight ON (PCB V2: Q5/TFT_BL)
+#endif
   BOOTMARK_V36("01 pin TFT siap");
 #if RS16_HAS_SPI_IMU_FLASH
   pinMode(ICM_CS_PIN,OUTPUT);digitalWrite(ICM_CS_PIN,HIGH);   // IMU ICM-42688-P share bus SPI dengan TFT, CS sendiri
