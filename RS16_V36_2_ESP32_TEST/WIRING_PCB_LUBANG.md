@@ -21,17 +21,34 @@ install driver **CH340**.
 | 1 | Baterai Li-ion 1S 18650 2300 mAh + holder | Daya |
 | 1 | Slide switch | ON/OFF utama |
 | 6 | Tactile switch | Tombol UP, DOWN, OK, BACK, RIGHT, POWER |
-| 1 | Buzzer pasif | Bunyi |
-| 1 | Transistor NPN 2N2222 / S8050 | Driver buzzer |
-| 1 | Dioda 1N4148 / BAT54 | Proteksi buzzer |
-| 2 | **Resistor 100k 1%** | **Pembaca baterai** |
-| 3 | Resistor 10k | Pull-up tombol BACK, RIGHT, POWER |
-| 1 | Resistor 1k | Basis transistor buzzer |
-| 1 | Resistor 15 Ω | Seri buzzer |
-| 3 | **Kapasitor keramik 100nF (104)** | **Pembaca baterai**, GPS, 5V |
-| 1 | Kapasitor 10µF | GPS |
-| 1 | Elco 470µF 10V | Bulk 5V (anti reset saat WiFi) |
+| 1 | Buzzer pasif (kaki THT) | Bunyi |
+| 1 | Transistor NPN 2N2222 / S8050 **kemasan TO-92** (3 kaki) | Driver buzzer |
+| 1 | Dioda **1N4148** (kaca, kaki panjang) | Proteksi buzzer |
+| 2 | **Resistor 100k 1% — 1/4 W kaki panjang** (cincin metal film biru) | **Pembaca baterai** |
+| 3 | Resistor 10k — 1/4 W kaki panjang | Pull-up tombol BACK, RIGHT, POWER |
+| 1 | Resistor 1k — 1/4 W kaki panjang | Basis transistor buzzer |
+| 1 | Resistor 15 Ω — 1/4 W kaki panjang | Seri buzzer |
+| 3 | **Kapasitor keramik 100nF kode "104"** — kapasitor **koin/disc kaki panjang** (MLCC THT juga boleh) | **Pembaca baterai**, GPS, 5V |
+| 1 | **Elco 10µF 16V** (kaki panjang) | GPS |
+| 1 | **Elco 470µF 10V/16V** (kaki panjang) | Bulk 5V (anti reset saat WiFi) |
+| 6 | Tactile switch **6x6 mm 4 kaki THT** | Tombol |
 | — | PCB lubang, header female 15 pin x2, kabel | Rakitan |
+
+**Semua komponen di atas versi kaki panjang (THT)** — tidak ada yang SMD. Nilainya sama dengan PCB V2
+(yang di V2 memakai SMD 0805), jadi hasil pembacaan sama.
+
+Kode warna resistor (metal film 1%, 5 cincin / karbon 5%, 4 cincin):
+
+| Nilai | 4 cincin (5%) | 5 cincin (1%) |
+|---|---|---|
+| 100k | coklat-hitam-kuning-emas | coklat-hitam-hitam-oranye-coklat |
+| 10k | coklat-hitam-oranye-emas | coklat-hitam-hitam-merah-coklat |
+| 1k | coklat-hitam-merah-emas | coklat-hitam-hitam-coklat-coklat |
+| 15 Ω | coklat-hijau-hitam-emas | coklat-hijau-hitam-emas-coklat |
+
+Paling aman: **ukur dulu dengan multimeter** sebelum disolder.
+Elco punya kutub: kaki **pendek / sisi bergaris** = (−) ke GND. Kapasitor keramik 104 tidak punya kutub.
+Untuk pembaca baterai, resistor 100k 5% masih bisa dipakai, tapi pilih dua yang hasil ukurnya paling mirip.
 
 ---
 
@@ -157,7 +174,7 @@ D15 ──[1k]── Basis 2N2222/S8050
              Emitor  ── GND
              Kolektor ── (−) buzzer
 5V ──[15Ω]── (+) buzzer
-Dioda 1N4148/BAT54 paralel buzzer: katoda (garis) ke (+) buzzer
+Dioda 1N4148 paralel buzzer: katoda (garis) ke (+) buzzer
 ```
 
 ---
