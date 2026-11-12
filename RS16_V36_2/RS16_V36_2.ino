@@ -75,30 +75,14 @@ struct ScreenEraseRun;
 #include "driver/rtc_io.h"   // pin bangun deep sleep (tombol POWER / PCF_INT)
 
 // ============================================================
-// MICROSD ON TFT PCB
+// MICROSD (J_SD1) PCB V2 100x55
 // ============================================================
-// Slot microSD physically exists on the TFT PCB. The final ESP32 GPIO mapping
-// for SD_CS / SD_MISO / SD_MOSI / SD_SCK is not present in the firmware/net
-// data available to this build, so V31 does NOT guess pins. Fill the four
-// values below from the actual PCB netlist to enable real SD writes.
-#ifndef RS16_SD_CS_PIN
-#define RS16_SD_CS_PIN   -1
-#endif
-#ifndef RS16_SD_MISO_PIN
-#define RS16_SD_MISO_PIN -1
-#endif
-#ifndef RS16_SD_MOSI_PIN
-#define RS16_SD_MOSI_PIN -1
-#endif
-#ifndef RS16_SD_SCK_PIN
-#define RS16_SD_SCK_PIN  -1
-#endif
-#if (RS16_SD_CS_PIN >= 0) && (RS16_SD_MISO_PIN >= 0) && (RS16_SD_MOSI_PIN >= 0) && (RS16_SD_SCK_PIN >= 0)
+// Slot microSD memakai bus SPI yang SAMA dengan LCD/IMU/flash (SCK 18, MISO 19, MOSI 23),
+// CS = GPIO26 (net TFT_SD_CS, pull-up R31 10k). Jadi SD dipasang di objek lcdSPI, bukan bus kedua.
+// Tanpa kartu: firmware jalan normal, logger tetap keluar ke Serial CSV.
+#define RS16_SD_CS_PIN 26
 #define RS16_SD_ENABLED 1
 #include <SD.h>
-#else
-#define RS16_SD_ENABLED 0
-#endif
 
 // Peta kaki WROOM-32 produksi (dikoreksi 6 Sep 2026 -- lihat audit-net-ic-pcb-produksi.md).
 // Bus SPI ini dipakai bersama oleh TFT, flash U7, dan IMU U8 (masing-masing CS sendiri).
@@ -111,6 +95,10 @@ struct ScreenEraseRun;
 // PCB V2 100x55 (RS16_V2_KICAD): backlight LCD lewat Q5 (2N7002) di sisi LED-K, gate = GPIO14
 // dengan pull-down R38 100k -> TANPA GPIO14 HIGH layar gelap.
 #define TFT_BL_PIN 14
+// Kecerahan backlight (PWM di gate Q5): 25 / 50 / 75 / 100 %. Disimpan di NVS ("bl").
+static uint8_t backlightLevelV36=3;
+static const uint8_t BL_PWM_V36[4]={64,128,192,255};
+static void setBacklightV36(bool on){ analogWrite(TFT_BL_PIN, on?BL_PWM_V36[backlightLevelV36&3]:0); }
 
 // Chip-select IMU ICM-42688-P (SPI, bus sama dengan TFT di atas).
 #define ICM_CS_PIN 5
@@ -725,7 +713,6 @@ static const uint16_t C_BLACK = 0x0000;
 // Dokumentasi Arduino-ESP32: di ESP32 klasik hanya HSPI dan VSPI yang tersedia untuk user.
 // VSPI dipilih karena pin papan ini (SCK=18, MISO=19, MOSI=23) PERSIS pin IO_MUX bawaan VSPI,
 // jadi SPI bisa jalan lewat jalur cepat, bukan lewat GPIO matrix.
-// HSPI tidak dipakai di sini karena sudah dipegang objek sdSpiV31.
 // Papan RS16 produksi memakai ESP32-WROOM-32 (ESP32 KLASIK). BUKAN S3, BUKAN C3/S2.
 // Guard di bawah sengaja bikin compile GAGAL kalau board yang dipilih salah -- lebih baik
 // ditolak dengan pesan jelas daripada diam-diam memilih bus SPI yang keliru seperti bug lama.
@@ -733,7 +720,7 @@ static const uint16_t C_BLACK = 0x0000;
 #if !defined(CONFIG_IDF_TARGET_ESP32)
 #error "BOARD SALAH. Firmware RS16 ini khusus ESP32-WROOM-32 (ESP32 klasik). Pilih 'ESP32 Dev Module' di Tools > Board, jangan varian S3/S2/C3."
 #endif
-SPIClass lcdSPI(VSPI);   // VSPI = satu-satunya pilihan yang benar di sini (HSPI sudah dipakai sdSpiV31)
+SPIClass lcdSPI(VSPI);   // VSPI = satu-satunya pilihan yang benar di sini (dipakai bersama LCD/IMU/flash/microSD)
 static uint8_t solidPixelBuffer[256];
 
 // ============================================================
@@ -9968,7 +9955,7 @@ static void drawBaseV31(const char* title,const char* status=nullptr){
   fillScreen(C_V31_BG); drawTopBarV31(); drawTextV31(14,39,title,C_V31_WHITE,2);
   if(status)drawTextRightV31(306,43,status,C_V31_BLUE,1); drawHLineV31(14,59,292,C_V31_BLUE);
 }
-static void markActivityV31(){ lastActivityMsV31=millis(); if(displaySleepingV31){lcdCommand(0x29);digitalWrite(TFT_BL_PIN,HIGH);displaySleepingV31=false;screenDirtyV31=true;} }
+static void markActivityV31(){ lastActivityMsV31=millis(); if(displaySleepingV31){lcdCommand(0x29);setBacklightV36(true);displaySleepingV31=false;screenDirtyV31=true;} }
 
 
 static uint8_t gpsEffectiveUsedSatV36(){
@@ -10220,13 +10207,16 @@ static void serviceTelemetryV31(){
 
 // ---------- microSD optional backend + serial CSV always real ----------
 #if RS16_SD_ENABLED
-SPIClass sdSpiV31(HSPI); static bool sdReadyV31=false; static File sdLogV31;
+static bool sdReadyV31=false; static File sdLogV31;
 #else
 static bool sdReadyV31=false;
 #endif
 static bool initSdV31(){
 #if RS16_SD_ENABLED
-  sdSpiV31.begin(RS16_SD_SCK_PIN,RS16_SD_MISO_PIN,RS16_SD_MOSI_PIN,RS16_SD_CS_PIN);sdReadyV31=SD.begin(RS16_SD_CS_PIN,sdSpiV31,16000000);return sdReadyV31;
+  // bus lcdSPI sudah aktif (dimulai di setup) -> SD.begin tidak membuat bus baru.
+  sdReadyV31=SD.begin(RS16_SD_CS_PIN,lcdSPI,16000000);
+  Serial.printf("BOOT> microSD %s\n",sdReadyV31?"TERPASANG":"TIDAK ADA KARTU");
+  return sdReadyV31;
 #else
   sdReadyV31=false;return false;
 #endif
@@ -10260,7 +10250,26 @@ static DragCompareV36 dragBestV36[DRAG_MODE_COUNT_V36];
 static DragCompareV36 dragLastV36[DRAG_MODE_COUNT_V36];
 static uint32_t customSignatureV36=0;
 static uint32_t customSignatureCalcV36(){uint32_t h=2166136261UL;for(uint8_t i=0;i<4;i++){h^=customPointM[i];h*=16777619UL;}return h;}
-static void resetDragRuntimeV31(){memset(&dragRtV31,0,sizeof(dragRtV31));for(uint8_t i=0;i<4;i++)dragRtV31.checkpointMs[i]=0xFFFFFFFFUL;speed0ZeroCountV36=0;resetTelemetryV31();}
+// Rekaman run untuk GRAFIK (layar RESULT, tombol RIGHT): kecepatan (km/h x10), G longitudinal (G x50),
+// waktu sejak start (x10 ms). Maks 200 titik; kalau penuh, titik dirapatkan (selang-seling) dan
+// interval rekam digandakan -- run panjang tetap muat tanpa memori tambahan.
+static const uint16_t DTRACE_MAX_V36=200;
+static uint16_t dTraceSpdV36[DTRACE_MAX_V36],dTraceTV36[DTRACE_MAX_V36];
+static int8_t dTraceGV36[DTRACE_MAX_V36];
+static uint16_t dTraceCountV36=0,dTraceStepV36=1,dTraceSkipV36=0;
+static bool dragFinishGraphV36=false;
+static void dragTraceAddV36(float kmh,uint32_t ms){
+  if(dTraceSkipV36++%dTraceStepV36)return;
+  if(dTraceCountV36>=DTRACE_MAX_V36){
+    uint16_t k=0;for(uint16_t i=0;i<dTraceCountV36;i+=2){dTraceSpdV36[k]=dTraceSpdV36[i];dTraceTV36[k]=dTraceTV36[i];dTraceGV36[k]=dTraceGV36[i];k++;}
+    dTraceCountV36=k;dTraceStepV36*=2;
+  }
+  dTraceSpdV36[dTraceCountV36]=(uint16_t)constrain(kmh*10.0f,0.0f,65000.0f);
+  dTraceTV36[dTraceCountV36]=(uint16_t)min(ms/10UL,65000UL);
+  dTraceGV36[dTraceCountV36]=(int8_t)constrain(gLongV31*50.0f,-127.0f,127.0f);
+  dTraceCountV36++;
+}
+static void resetDragRuntimeV31(){dTraceCountV36=0;dTraceStepV36=1;dTraceSkipV36=0;memset(&dragRtV31,0,sizeof(dragRtV31));for(uint8_t i=0;i<4;i++)dragRtV31.checkpointMs[i]=0xFFFFFFFFUL;speed0ZeroCountV36=0;resetTelemetryV31();}
 static float dragFinishDistanceV31(){switch(selectedDragMode){case DRAG_QUARTER:return 402.336f;case DRAG_EIGHTH:return 201.168f;case DRAG_60FT:return 18.288f;case DRAG_CUSTOM:return customPointM[3];default:return 0;}}
 static float dragFinishSpeedV31(){return selectedDragMode==DRAG_0_100?100.0f:selectedDragMode==DRAG_0_200?200.0f:0.0f;}
 static bool dragCheckpointsAreSpeedV31(){return selectedDragMode==DRAG_0_100||selectedDragMode==DRAG_0_200||selectedDragMode==DRAG_0_SPEED_0;}
@@ -10292,6 +10301,7 @@ static void finishDragV31(bool completed=true){
   dragAbortedV36=!completed;
   dragRtV31.totalMs=dragRtV31.timingStarted?gpsTowDeltaMsV30(gpsITowMsV30,dragRtV31.startTow):0;
   uiTestScreen=UI_DRAG_FINISH;
+  dragFinishGraphV36=false;
   dragFinishShownMsV36=millis();
   if(completed&&soundFinishV31)buzzerPlayV31(2700,350);
   screenDirtyV31=true;
@@ -10359,6 +10369,7 @@ static void serviceDragV31(){
     dragRtV31.startTow=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);
     dragRtV31.timingStarted=true;
   }
+  if(dragRtV31.timingStarted)dragTraceAddV36(sp,gpsTowDeltaMsV30(tow,dragRtV31.startTow));
   const float prevD=max(0.0f,dragRtV31.prevRawDistanceM-(dragRolloutEnabled?0.3048f:0));
   const float d=max(0.0f,dragRtV31.rawDistanceM-(dragRolloutEnabled?0.3048f:0));
   if(dragRtV31.timingStarted){
@@ -10541,7 +10552,7 @@ static void powerOffV36(const char* reason){
   delay(1200);
   lcdCommand(0x28);
   Serial.flush();
-  digitalWrite(TFT_BL_PIN,LOW);   // backlight padam (PCB V2: Q5 off)
+  setBacklightV36(false);   // backlight padam (PCB V2: Q5 off)
   lcdCommand(0x10);   // ILI9341 SLEEP IN
   {const uint32_t t0=millis();do{pcfRefreshV36();delay(20);}while(buttonRawV36(5)==LOW&&millis()-t0<5000UL);}   // tunggu POWER dilepas
   delay(50);
@@ -10562,8 +10573,8 @@ static void serviceBatteryProtectionV36(){
 }
 
 // ---------- persistence ----------
-static void saveSettingsV31(){prefsV31.putBool("roll",dragRolloutEnabled);prefsV31.putBytes("cp",customPointM,sizeof(customPointM));prefsV31.putBool("mph",unitMphV31);prefsV31.putUChar("frz",dragFreezeModeV36);prefsV31.putUShort("s0t",speed0TargetKmh);prefsV31.putUChar("grate",gnssUpdateRateIdxV36);prefsV31.putUChar("gsys2",gnssSystemIdxV36);prefsV31.putBool("lauto",loggerAutoStartV31);prefsV31.putBool("calap",circuitAutoLapV31);prefsV31.putBool("cast",circuitAutoStartV31);prefsV31.putBool("csp",circuitSectorPopupV31);prefsV31.putBool("cbp",circuitBeepV31);prefsV31.putBool("cman",circuitManualSectorV36);prefsV31.putUChar("aoff",autoShutdownIndexV31);prefsV31.putBool("sndc",soundCountdownV31);prefsV31.putBool("sndf",soundFinishV31);prefsV31.putBool("sndb",soundLowBatteryV31);}
-static void loadSettingsV31(){dragRolloutEnabled=prefsV31.getBool("roll",true);if(prefsV31.getBytesLength("cp")==sizeof(customPointM))prefsV31.getBytes("cp",customPointM,sizeof(customPointM));unitMphV31=prefsV31.getBool("mph",false);{uint8_t f=prefsV31.getUChar("frz",0);dragFreezeModeV36=(f>2)?2:f;}{uint16_t t=prefsV31.getUShort("s0t",100);speed0TargetKmh=(t<20)?20:((t>300)?300:t);}{uint8_t r=prefsV31.getUChar("grate",1);gnssUpdateRateIdxV36=(r>1)?1:r;}{uint8_t g=prefsV31.getUChar("gsys2",4);/* V36.2 key baru: urutan pilihan sistem berubah */gnssSystemIdxV36=(g>4)?4:g;}loggerAutoStartV31=prefsV31.getBool("lauto",true);circuitAutoLapV31=prefsV31.getBool("calap",true);circuitAutoStartV31=prefsV31.getBool("cast",true);circuitSectorPopupV31=prefsV31.getBool("csp",true);circuitBeepV31=prefsV31.getBool("cbp",true);circuitManualSectorV36=prefsV31.getBool("cman",false);{uint8_t a=prefsV31.getUChar("aoff",3);autoShutdownIndexV31=(a>4)?4:a;}soundCountdownV31=prefsV31.getBool("sndc",true);soundFinishV31=prefsV31.getBool("sndf",true);soundLowBatteryV31=prefsV31.getBool("sndb",true);imuOffAxV31=prefsV31.getFloat("oax",0);imuOffAyV31=prefsV31.getFloat("oay",0);imuOffAzV31=prefsV31.getFloat("oaz",0);imuOffGxV31=prefsV31.getFloat("ogx",0);imuOffGyV31=prefsV31.getFloat("ogy",0);imuOffGzV31=prefsV31.getFloat("ogz",0);
+static void saveSettingsV31(){prefsV31.putBool("roll",dragRolloutEnabled);prefsV31.putBytes("cp",customPointM,sizeof(customPointM));prefsV31.putBool("mph",unitMphV31);prefsV31.putUChar("frz",dragFreezeModeV36);prefsV31.putUShort("s0t",speed0TargetKmh);prefsV31.putUChar("grate",gnssUpdateRateIdxV36);prefsV31.putUChar("gsys2",gnssSystemIdxV36);prefsV31.putBool("lauto",loggerAutoStartV31);prefsV31.putBool("calap",circuitAutoLapV31);prefsV31.putBool("cast",circuitAutoStartV31);prefsV31.putBool("csp",circuitSectorPopupV31);prefsV31.putBool("cbp",circuitBeepV31);prefsV31.putBool("cman",circuitManualSectorV36);prefsV31.putUChar("aoff",autoShutdownIndexV31);prefsV31.putBool("sndc",soundCountdownV31);prefsV31.putBool("sndf",soundFinishV31);prefsV31.putBool("sndb",soundLowBatteryV31);prefsV31.putUChar("bl",backlightLevelV36);}
+static void loadSettingsV31(){dragRolloutEnabled=prefsV31.getBool("roll",true);if(prefsV31.getBytesLength("cp")==sizeof(customPointM))prefsV31.getBytes("cp",customPointM,sizeof(customPointM));unitMphV31=prefsV31.getBool("mph",false);{uint8_t f=prefsV31.getUChar("frz",0);dragFreezeModeV36=(f>2)?2:f;}{uint16_t t=prefsV31.getUShort("s0t",100);speed0TargetKmh=(t<20)?20:((t>300)?300:t);}{uint8_t r=prefsV31.getUChar("grate",1);gnssUpdateRateIdxV36=(r>1)?1:r;}{uint8_t g=prefsV31.getUChar("gsys2",4);/* V36.2 key baru: urutan pilihan sistem berubah */gnssSystemIdxV36=(g>4)?4:g;}loggerAutoStartV31=prefsV31.getBool("lauto",true);circuitAutoLapV31=prefsV31.getBool("calap",true);circuitAutoStartV31=prefsV31.getBool("cast",true);circuitSectorPopupV31=prefsV31.getBool("csp",true);circuitBeepV31=prefsV31.getBool("cbp",true);circuitManualSectorV36=prefsV31.getBool("cman",false);{uint8_t a=prefsV31.getUChar("aoff",3);autoShutdownIndexV31=(a>4)?4:a;}soundCountdownV31=prefsV31.getBool("sndc",true);soundFinishV31=prefsV31.getBool("sndf",true);soundLowBatteryV31=prefsV31.getBool("sndb",true);{uint8_t b=prefsV31.getUChar("bl",3);backlightLevelV36=(b>3)?3:b;}imuOffAxV31=prefsV31.getFloat("oax",0);imuOffAyV31=prefsV31.getFloat("oay",0);imuOffAzV31=prefsV31.getFloat("oaz",0);imuOffGxV31=prefsV31.getFloat("ogx",0);imuOffGyV31=prefsV31.getFloat("ogy",0);imuOffGzV31=prefsV31.getFloat("ogz",0);
   // FIX 6 Sep 2026: kredensial OTA sekarang BENAR-BENAR dibaca dari NVS ("otau"/"otap") seperti
   // yang selama ini cuma ditulis di komentar. Kalau key-nya belum pernah diisi, nilai default lama
   // tetap dipakai. Catatan jujur: belum ada menu di layar untuk mengubahnya (belum diminta) --
@@ -10831,7 +10842,55 @@ static void drawDragFinishV31(){
     else snprintf(line,sizeof(line),"VS BEST  --");
     drawTextV31(22,228,line,C_V31_WHITE,1);
   }
-  drawTextRightV31(298,228,"OK = NEXT RUN",C_V31_GRAY,1);
+  drawTextRightV31(298,228,"RIGHT = GRAFIK",C_V31_GRAY,1);
+}
+// GRAFIK RUN: atas = kecepatan vs waktu (biru), bawah = G longitudinal (hijau = aksel, merah = rem).
+// Garis vertikal tipis = waktu checkpoint. RIGHT = kembali ke RESULT.
+static void drawDragGraphV36(){
+  fillScreen(C_V31_BG);drawTopBarV31();
+  drawTextV31(14,38,"GRAFIK RUN",C_V31_WHITE,2);
+  drawTextRightV31(306,42,dragModeNameV31(),C_V31_BLUE,1);
+  const int16_t x0=40,x1=306,w=x1-x0,sTop=60,sBot=164,gTop=176,gBot=212;
+  const int16_t gMid=(gTop+gBot)/2;
+  if(dTraceCountV36<2){
+    drawTextCenteredV31(160,120,"DATA GRAFIK BELUM ADA",C_V31_GRAY,1);
+    drawTextRightV31(306,228,"RIGHT = HASIL",C_V31_GRAY,1);
+    return;
+  }
+  // skala
+  float vmax=spdDispV36(dragRtV31.maxSpeedKmh);
+  const uint16_t vstep=vmax>200?50:(vmax>100?25:(vmax>40?20:10));
+  uint16_t vtop=(uint16_t)(ceilf(vmax/vstep)*vstep);if(vtop<vstep)vtop=vstep;
+  uint32_t tmax=(uint32_t)dTraceTV36[dTraceCountV36-1]*10UL;if(dragRtV31.totalMs>tmax)tmax=dragRtV31.totalMs;if(tmax<100)tmax=100;
+  char v[20];
+  // grid kecepatan + label
+  for(uint16_t sv=0;sv<=vtop;sv+=vstep){
+    const int16_t y=sBot-(int16_t)((float)sv/vtop*(sBot-sTop));
+    drawHLineV31(x0,y,w,C_V31_EDGE);
+    snprintf(v,sizeof(v),"%u",sv);drawTextRightV31(x0-4,y-3,v,C_V31_GRAY,1);
+  }
+  drawTextV31(x0+2,sTop-1,spdUnitV36(),C_V31_GRAY,1);
+  // strip G: garis 0 dan +-1 G
+  drawRectV31(x0,gTop,w,gBot-gTop+1,C_V31_EDGE);drawHLineV31(x0,gMid,w,C_V31_GRAY);
+  drawTextRightV31(x0-4,gTop-3,"+1G",C_V31_GRAY,1);drawTextRightV31(x0-4,gMid-3,"0",C_V31_GRAY,1);drawTextRightV31(x0-4,gBot-6,"-1G",C_V31_GRAY,1);
+  // checkpoint
+  for(uint8_t i=0;i<4;i++)if(dragRtV31.checkpointMs[i]!=0xFFFFFFFFUL&&dragRtV31.checkpointMs[i]<=tmax){
+    const int16_t x=x0+(int16_t)((float)dragRtV31.checkpointMs[i]/tmax*w);drawVLineV31(x,sTop,gBot-sTop,C_V31_DARK);
+  }
+  auto gxV36=[&](uint16_t i)->int16_t{return x0+(int16_t)((float)dTraceTV36[i]*10.0f/tmax*w);};
+  auto gsV36=[&](uint16_t i)->int16_t{float sv=spdDispV36(dTraceSpdV36[i]*0.1f);if(sv>vtop)sv=vtop;return sBot-(int16_t)(sv/vtop*(sBot-sTop));};
+  auto ggV36=[&](uint16_t i)->int16_t{float g=dTraceGV36[i]/50.0f;g=constrain(g,-1.0f,1.0f);return gMid-(int16_t)(g*(gMid-gTop));};
+  for(uint16_t i=1;i<dTraceCountV36;i++){
+    drawLineV31(gxV36(i-1),gsV36(i-1),gxV36(i),gsV36(i),C_V31_BLUE);drawLineV31(gxV36(i-1),gsV36(i-1)+1,gxV36(i),gsV36(i)+1,C_V31_BLUE);   // tebal 2 px
+    drawLineV31(gxV36(i-1),ggV36(i-1),gxV36(i),ggV36(i),dTraceGV36[i]>=0?C_V31_GREEN:C_V31_RED);
+  }
+  // sumbu waktu
+  char t0[12];formatMsV31(tmax,t0,sizeof(t0));
+  drawTextV31(x0,gBot+4,"0",C_V31_GRAY,1);drawTextRightV31(x1,gBot+4,t0,C_V31_GRAY,1);
+  formatMsV31(tmax/2,v,sizeof(v));drawTextCenteredV31(x0+w/2,gBot+4,v,C_V31_GRAY,1);
+  snprintf(v,sizeof(v),"MAX %.1f",vmax);drawTextRightV31(x1-2,sTop+2,v,C_V31_WHITE,1);
+  drawTextV31(14,229,"G LONG",C_V31_GREEN,1);
+  drawTextRightV31(306,229,"RIGHT = HASIL",C_V31_GRAY,1);
 }
 // ---------- V36.2 helper gambar ----------
 // Cincin/lingkaran penuh tanpa celah: diisi per baris (ri=0 -> lingkaran penuh).
@@ -11136,27 +11195,45 @@ static void drawSelectedImuCalMenuV31(){
   int y=70+imuCalibrationSelection*39;
   drawRoundSelectV36(22,y-3,276,37,10);
 }
-// V36.2 G-METER ala Qstarz (warna RS16): lingkaran 0.5 / 1.0 / 1.5 G, titik merah = G saat ini.
-// Tiap arah: angka besar = nilai sekarang, angka kecil abu-abu = puncak. OK = reset puncak.
+// G-METER (diperjelas 12 Nov 2026): lingkaran 0.5 / 1.0 / 1.5 G + jejak 3 detik terakhir, titik merah = G
+// saat ini. Kolom kiri KIRI & AKSEL, kolom kanan KANAN & REM: label, angka besar (G), MAX = puncak.
+// Atas: kecepatan (angka besar) dan G TOTAL. OK = reset puncak.
+static const uint8_t GTRAIL_N_V36=30;
+static int8_t gTrailXV36[GTRAIL_N_V36],gTrailYV36[GTRAIL_N_V36];
+static uint8_t gTrailCountV36=0,gTrailHeadV36=0;
 static void drawGmeterV31(){
   fillScreen(C_V31_BG);drawTopBarV31();
-  const int16_t cx=160,cy=134; const float PXG=40.0f;   // 40 px per 1 G
-  drawRingV36(cx,cy,63,58,C_V31_TEXT);   // 1.5 G
-  drawRingV36(cx,cy,41,39,C_V31_GRAY);   // 1.0 G
-  drawRingV36(cx,cy,21,19,C_V31_GRAY);   // 0.5 G
-  drawHLineV31(cx-56,cy,113,C_V31_GRAY);drawVLineV31(cx,cy-56,113,C_V31_GRAY);
-  const int16_t px=cx+(int16_t)constrain(gLatV31*PXG,-56.0f,56.0f);
-  const int16_t py=cy-(int16_t)constrain(gLongV31*PXG,-56.0f,56.0f);   // akselerasi = atas, rem = bawah
-  drawRingV36(px,py,4,0,C_V31_RED);
-  char v[12];
-  auto big=[&](int16_t x,int16_t y,float g){snprintf(v,sizeof(v),"%.2f",g>0?g:0.0f);drawTextCenteredV31(x,y,v,C_V31_WHITE,2);};
-  auto small=[&](int16_t x,int16_t y,float g){snprintf(v,sizeof(v),"%.2f",g);drawTextCenteredV31(x,y,v,C_V31_GRAY,1);};
-  big(118,42,gLongV31);          small(206,46,peakAccelGV31);     // ACCEL
-  big(118,206,-gLongV31);        small(206,210,peakBrakeGV31);    // BRAKE
-  big(46,122,-gLatV31);          small(46,144,peakLatLeftV36);    // KIRI
-  big(274,122,gLatV31);          small(274,144,peakLatRightV36);  // KANAN
-  if(!imuConnectedV31)drawTextCenteredV31(160,228,"NO IMU",C_V31_RED,1);
-  else drawTextCenteredV31(160,228,"OK = RESET PUNCAK",C_V31_DARK,1);
+  const int16_t cx=160,cy=138; const float PXG=44.0f;   // 44 px per 1 G -> 1.5 G = 66 px
+  drawRingV36(cx,cy,66,64,C_V31_TEXT);   // 1.5 G
+  drawRingV36(cx,cy,44,43,C_V31_GRAY);   // 1.0 G
+  drawRingV36(cx,cy,22,21,C_V31_GRAY);   // 0.5 G
+  drawHLineV31(cx-66,cy,133,C_V31_EDGE);drawVLineV31(cx,cy-66,133,C_V31_EDGE);
+  drawTextV31(cx+3,cy-21,"0.5",C_V31_DARK,1);drawTextV31(cx+3,cy-43,"1.0",C_V31_DARK,1);drawTextV31(cx+3,cy-65,"1.5",C_V31_DARK,1);
+  // jejak: simpan posisi tiap gambar ulang (~100 ms), gambar sebagai titik abu-abu
+  const int8_t ox=(int8_t)constrain(gLatV31*PXG,-63.0f,63.0f),oy=(int8_t)constrain(-gLongV31*PXG,-63.0f,63.0f);   // akselerasi = atas
+  gTrailXV36[gTrailHeadV36]=ox;gTrailYV36[gTrailHeadV36]=oy;gTrailHeadV36=(gTrailHeadV36+1)%GTRAIL_N_V36;if(gTrailCountV36<GTRAIL_N_V36)gTrailCountV36++;
+  for(uint8_t k=0;k<gTrailCountV36;k++){const uint8_t q=(gTrailHeadV36+GTRAIL_N_V36-1-k)%GTRAIL_N_V36;fillRect(cx+gTrailXV36[q]-1,cy+gTrailYV36[q]-1,2,2,C_V31_GRAY);}
+  drawRingV36(cx+ox,cy+oy,5,0,C_V31_RED);
+  char v[16];
+  // atas kiri: kecepatan
+  snprintf(v,sizeof(v),"%.0f",spdDispV36(gpsSpeedKmhV30));drawTextV31(10,38,v,C_V31_WHITE,3);
+  drawTextV31(10+textWidthV31(v,3)+4,52,spdUnitV36(),C_V31_GRAY,1);
+  // atas kanan: G total
+  drawTextRightV31(312,36,"G TOTAL",C_V31_GRAY,1);
+  snprintf(v,sizeof(v),"%.2f",sqrtf(gLongV31*gLongV31+gLatV31*gLatV31));drawTextRightV31(312,46,v,C_V31_WHITE,3);
+  // kolom: label, angka besar, MAX
+  auto col=[&](bool right,int16_t y,const char* lab,float g,float pk,uint16_t c){
+    const int16_t x=right?314:6;
+    char n[12],m[16];snprintf(n,sizeof(n),"%.2f",g>0?g:0.0f);snprintf(m,sizeof(m),"MAX %.2f",pk);
+    if(right){drawTextRightV31(x,y,lab,C_V31_GRAY,1);drawTextRightV31(x,y+11,n,c,3);drawTextRightV31(x,y+36,m,C_V31_TEXT,1);}
+    else{drawTextV31(x,y,lab,C_V31_GRAY,1);drawTextV31(x,y+11,n,c,3);drawTextV31(x,y+36,m,C_V31_TEXT,1);}
+  };
+  col(false,80,"KIRI",-gLatV31,peakLatLeftV36,C_V31_BLUE);
+  col(true ,80,"KANAN",gLatV31,peakLatRightV36,C_V31_BLUE);
+  col(false,146,"AKSEL",gLongV31,peakAccelGV31,C_V31_GREEN);
+  col(true ,146,"REM",-gLongV31,peakBrakeGV31,C_V31_RED);
+  if(!imuConnectedV31)drawTextCenteredV31(160,222,"NO IMU",C_V31_RED,2);
+  else drawTextCenteredV31(160,226,"OK = RESET MAX",C_V31_DARK,1);
 }
 static void drawImuCalRunningV31(){drawBaseV31("IMU CALIBRATION",imuConnectedV31?"SAMPLING":"NO IMU");uint16_t rawPct=(uint16_t)(imuCalCountV31/4);uint8_t pct=(uint8_t)((rawPct>100)?100:rawPct);char p[16];snprintf(p,sizeof(p),"%u%%",pct);drawTextCenteredV31(160,89,"KEEP VEHICLE STILL",C_V31_WHITE,2);drawPanelV31(42,130,236,20);fillRect(45,133,(int)(230*pct/100),14,C_V31_BLUE);drawTextCenteredV31(160,169,p,C_V31_WHITE,2);drawTextCenteredV31(160,202,imuCalActiveV31?"REAL SENSOR SAMPLING":"CALIBRATION COMPLETE",imuCalActiveV31?C_V31_GRAY:C_V31_GREEN,1);}
 static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
@@ -11167,19 +11244,20 @@ static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"
 static void drawOtaV31(){drawBaseV31("FIRMWARE UPDATE",otaInProgressV31?"UPDATING":"READY");if(!wifiUserEnabledV31)drawTextCenteredV31(160,92,"WI-FI WILL START",C_V31_BLUE,2);else{char b[30];snprintf(b,sizeof(b),"RECEIVED %lu BYTES",(unsigned long)otaBytesV31);drawTextCenteredV31(160,91,"POST FIRMWARE TO /UPDATE",C_V31_WHITE,1);drawTextCenteredV31(160,123,b,C_V31_TEXT,1);}drawTextCenteredV31(160,165,"192.168.4.1",C_V31_BLUE,2);drawTextCenteredV31(160,206,otaInProgressV31?"DO NOT POWER OFF":"UPDATE READY",otaInProgressV31?C_V31_RED:C_V31_GRAY,1);}
 static void drawConnectionV31(){drawBaseV31("CONNECTION INFO",wifiUserEnabledV31?"ONLINE":"OFFLINE");char a[30],b[30],c[30];snprintf(a,sizeof(a),"WI-FI %s",wifiUserEnabledV31?"ON":"OFF");snprintf(b,sizeof(b),"CLIENT %u",wifiUserEnabledV31?WiFi.softAPgetStationNum():0);snprintf(c,sizeof(c),"OTA BYTES %lu",(unsigned long)otaBytesV31);drawTextV31(34,84,a,C_V31_WHITE,1);drawTextV31(34,115,"SSID RS16_0016",C_V31_WHITE,1);drawTextV31(34,146,"IP 192.168.4.1",C_V31_WHITE,1);drawTextV31(34,177,b,C_V31_WHITE,1);drawTextV31(34,208,c,C_V31_BLUE,1);}
 
-static void drawSettingsMenuV31(){char ao[16],snd[8];uint8_t m=AUTO_SHUTDOWN_MINUTES_V31[autoShutdownIndexV31];if(m)snprintf(ao,sizeof(ao),"%u MIN",m);else snprintf(ao,sizeof(ao),"OFF");boolTextV31(soundCountdownV31||soundFinishV31||soundLowBatteryV31,snd,sizeof(snd));const char* lab[]={"DISPLAY","AUTO SHUTDOWN","SOUND","SYSTEM INFO","UNIT"};const char* val[]={"FIXED 3V3",ao,snd,"DEVICE / VERSION",unitMphV31?"MPH":"KPH"};drawMenuRowsV31("SETTINGS",lab,val,5,settingsSelection);}
-static void drawDisplaySettingsV31(){drawBaseV31("DISPLAY","HARDWARE");drawTextCenteredV31(160,90,"BACKLIGHT FIXED 3V3",C_V31_WHITE,2);drawTextCenteredV31(160,129,"PWM BRIGHTNESS NOT WIRED",C_V31_BLUE,1);drawTextCenteredV31(160,158,"LCD CONTENT IS LIVE",C_V31_TEXT,1);drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
+static void drawSettingsMenuV31(){char ao[16],snd[8];uint8_t m=AUTO_SHUTDOWN_MINUTES_V31[autoShutdownIndexV31];if(m)snprintf(ao,sizeof(ao),"%u MIN",m);else snprintf(ao,sizeof(ao),"OFF");boolTextV31(soundCountdownV31||soundFinishV31||soundLowBatteryV31,snd,sizeof(snd));const char* lab[]={"DISPLAY","AUTO SHUTDOWN","SOUND","SYSTEM INFO","UNIT"};char bl[8];snprintf(bl,sizeof(bl),"%u%%",(unsigned)((backlightLevelV36+1)*25));const char* val[]={bl,ao,snd,"DEVICE / VERSION",unitMphV31?"MPH":"KPH"};drawMenuRowsV31("SETTINGS",lab,val,5,settingsSelection);}
+static uint8_t displayBlSelV36=3;
+static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %","75 %","100 %"};drawListV36(o,nullptr,4,displayBlSelV36,(int8_t)backlightLevelV36,"KECERAHAN  OK = SIMPAN  BACK = BATAL");}
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
-static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"COUNTDOWN BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V31");char gps[28],imu[28],bat[28],sd[34];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");snprintf(sd,sizeof(sd),"MICRO SD %s",sdReadyV31?"READY":"PIN MAP NEEDED");char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,"DATA MANAGEMENT"};for(uint8_t i=0;i<7;i++)drawTextV31(30,73+i*23,rows[i],i==0?C_V31_GRAY:(i==6?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.2");char gps[28],imu[28],bat[28],sd[34];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");snprintf(sd,sizeof(sd),"MICRO SD %s",sdReadyV31?"READY":"NO CARD");char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,"DATA MANAGEMENT"};for(uint8_t i=0;i<7;i++)drawTextV31(30,73+i*23,rows[i],i==0?C_V31_GRAY:(i==6?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
-static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"RAM / FUTURE SD","SD LOG FILES","RUNTIME + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
+static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
 static void drawConfirmV31(){drawBaseV31("CONFIRM ACTION","SAFETY");const char* a[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};drawTextCenteredV31(160,92,a[confirmActionV31],C_V31_RED,2);drawTextCenteredV31(160,139,"HOLD OK 2 SEC TO CONFIRM",C_V31_WHITE,1);drawTextCenteredV31(160,168,"CANCEL AVAILABLE",C_V31_BLUE,1);}
 static void deleteGpsLogsV31(){
 #if RS16_SD_ENABLED
-  if(!sdReadyV31)return;File root=SD.open("/");if(!root)return;File f=root.openNextFile();while(f){String name=f.name();bool dir=f.isDirectory();f.close();if(!dir&&(name.startsWith("/LOG_")||name=="/RS16_LOG.CSV"))SD.remove(name);f=root.openNextFile();}root.close();
+  if(!sdReadyV31)return;File root=SD.open("/");if(!root)return;File f=root.openNextFile();while(f){String name=f.name();if(!name.startsWith("/"))name="/"+name;bool dir=f.isDirectory();f.close();if(!dir&&(name.startsWith("/LOG_")||name=="/RS16_LOG.CSV"))SD.remove(name);f=root.openNextFile();}root.close();
 #endif
 }
 // V36.2: DELETE HISTORY dulu cuma mengosongkan buffer RAM telemetry; BEST/LAST tetap ada.
@@ -11270,7 +11348,7 @@ static void handleButtonsV31(){
   // Tombol POWER (index 5): tahan 2 dtk = power off, tekan singkat = layar off/on.
   {const bool wasSleeping=displaySleepingV31;const uint8_t pwr=updateButtonEvent(5);
    if(pwr&BUTTON_EVENT_LONG){if(!otaInProgressV31)powerOffV36("POWER BUTTON");return;}
-   if(pwr&BUTTON_EVENT_SHORT){if(wasSleeping)markActivityV31();else if(!otaInProgressV31){lcdCommand(0x28);digitalWrite(TFT_BL_PIN,LOW);displaySleepingV31=true;}return;}}
+   if(pwr&BUTTON_EVENT_SHORT){if(wasSleeping)markActivityV31();else if(!otaInProgressV31){lcdCommand(0x28);setBacklightV36(false);displaySleepingV31=true;}return;}}
   if(up||down||ok||back||right)markActivityV31();
   if(displaySleepingV31)return;
   if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT)moveMainV31(-1);if(down&BUTTON_EVENT_SHORT)moveMainV31(1);if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
@@ -11347,7 +11425,7 @@ static void handleButtonsV31(){
   }
   if(uiTestScreen==UI_DRAG_READY){if(ok&BUTTON_EVENT_SHORT)startDragRunV31();if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();}return;}
   if(uiTestScreen==UI_DRAG_RUNNING){if(back&BUTTON_EVENT_SHORT){finishDragV31(false);}return;}
-  if(uiTestScreen==UI_DRAG_FINISH){if(ok&BUTTON_EVENT_SHORT){resetDragRuntimeV31();uiTestScreen=UI_DRAG_READY;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();}return;}
+  if(uiTestScreen==UI_DRAG_FINISH){if(right&BUTTON_EVENT_SHORT){dragFinishGraphV36=!dragFinishGraphV36;dragFinishShownMsV36=millis();screenDirtyV31=true;}if(ok&BUTTON_EVENT_SHORT){resetDragRuntimeV31();uiTestScreen=UI_DRAG_READY;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();}return;}
   if(uiTestScreen==UI_GNSS_MENU){
     if(up&BUTTON_EVENT_SHORT){gnssMenuSelection=gnssMenuSelection?gnssMenuSelection-1:3;screenDirtyV31=true;}
     if(down&BUTTON_EVENT_SHORT){gnssMenuSelection=(gnssMenuSelection+1)%4;screenDirtyV31=true;}
@@ -11564,8 +11642,16 @@ if(uiTestScreen==UI_ACCEL_CAL_MENU){
   if(uiTestScreen==UI_APPLICATION_WIFI){if(ok&BUTTON_EVENT_SHORT){if(wifiUserEnabledV31)stopWifiV31();else startWifiV31();screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_APPLICATION_PHONE_LINK||uiTestScreen==UI_APPLICATION_CONNECTION_INFO){if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_APPLICATION_FW_UPDATE){if(back&BUTTON_EVENT_SHORT&&!otaInProgressV31){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
-  if(uiTestScreen==UI_SETTINGS_MENU){if(up&BUTTON_EVENT_SHORT)settingsSelection=settingsSelection?settingsSelection-1:4;if(down&BUTTON_EVENT_SHORT)settingsSelection=(settingsSelection+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){if(settingsSelection==4){unitMphV31=!unitMphV31;saveSettingsV31();screenDirtyV31=true;}else{uiTestScreen=(UiTestScreen)(UI_SETTINGS_DISPLAY+settingsSelection);soundSelV36=0;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}return;}
-  if(uiTestScreen==UI_SETTINGS_DISPLAY){if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
+  if(uiTestScreen==UI_SETTINGS_MENU){if(up&BUTTON_EVENT_SHORT)settingsSelection=settingsSelection?settingsSelection-1:4;if(down&BUTTON_EVENT_SHORT)settingsSelection=(settingsSelection+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){if(settingsSelection==4){unitMphV31=!unitMphV31;saveSettingsV31();screenDirtyV31=true;}else{uiTestScreen=(UiTestScreen)(UI_SETTINGS_DISPLAY+settingsSelection);soundSelV36=0;displayBlSelV36=backlightLevelV36;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}return;}
+  if(uiTestScreen==UI_SETTINGS_DISPLAY){
+    // pratinjau langsung saat UP/DOWN, OK = simpan, BACK = kembalikan level lama
+    if(up&BUTTON_EVENT_SHORT){displayBlSelV36=displayBlSelV36?displayBlSelV36-1:3;}
+    if(down&BUTTON_EVENT_SHORT){displayBlSelV36=(displayBlSelV36+1)&3;}
+    if((up|down)&BUTTON_EVENT_SHORT){analogWrite(TFT_BL_PIN,BL_PWM_V36[displayBlSelV36]);screenDirtyV31=true;}
+    if(ok&BUTTON_EVENT_SHORT){backlightLevelV36=displayBlSelV36;saveSettingsV31();setBacklightV36(true);uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}
+    if(back&BUTTON_EVENT_SHORT){setBacklightV36(true);uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}
+    return;
+  }
   if(uiTestScreen==UI_SETTINGS_AUTO_SHUTDOWN){if(up&BUTTON_EVENT_SHORT)autoShutdownIndexV31=autoShutdownIndexV31?autoShutdownIndexV31-1:4;if(down&BUTTON_EVENT_SHORT)autoShutdownIndexV31=(autoShutdownIndexV31+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){saveSettingsV31();uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){{uint8_t a=prefsV31.getUChar("aoff",3);autoShutdownIndexV31=(a>4)?4:a;}uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_SETTINGS_SOUND){uint8_t& ss=soundSelV36;if(up&BUTTON_EVENT_SHORT)ss=ss?ss-1:2;if(down&BUTTON_EVENT_SHORT)ss=(ss+1)%3;if(ok&BUTTON_EVENT_SHORT){if(ss==0)soundCountdownV31=!soundCountdownV31;else if(ss==1)soundFinishV31=!soundFinishV31;else soundLowBatteryV31=!soundLowBatteryV31;saveSettingsV31();}if((up|down|ok)&BUTTON_EVENT_SHORT){screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){settingsSelection=2;uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_SETTINGS_SYSTEM_INFO){if(ok&BUTTON_EVENT_SHORT){uiTestScreen=UI_DATA_MANAGEMENT;dataSelectionV31=0;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_SETTINGS_MENU;screenDirtyV31=true;}return;}
@@ -11625,7 +11711,7 @@ static void renderDynamicV31(bool force=false){
     case UI_SPEED0_SETUP:drawSpeed0SetupV36();break;
     case UI_DRAG_READY:drawDragStandbyV31();break;
     case UI_DRAG_RUNNING:drawDragRunningV31();break;
-    case UI_DRAG_FINISH:drawDragFinishV31();break;
+    case UI_DRAG_FINISH:if(dragFinishGraphV36)drawDragGraphV36();else drawDragFinishV31();break;
     case UI_GNSS_MENU:drawGnssMenuV36();break;
     case UI_GPS_SATELLITE:drawGpsSatelliteV31();break;
     case UI_GNSS_COLDSTART:drawGnssColdStartV36();break;
@@ -11743,10 +11829,11 @@ void setup(){
                 (int)esp_reset_reason(),(int)getCpuFrequencyMhz(),(unsigned)ESP.getFreeHeap());
   Serial.flush();
   pinMode(TFT_CS,OUTPUT);pinMode(TFT_DC,OUTPUT);pinMode(TFT_RST,OUTPUT);digitalWrite(TFT_CS,HIGH);digitalWrite(TFT_DC,HIGH);digitalWrite(TFT_RST,HIGH);
-  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,HIGH);   // backlight ON (PCB V2: Q5/TFT_BL)
+  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,HIGH);   // backlight ON penuh saat boot (PCB V2: Q5/TFT_BL); level user dipasang setelah setting dimuat
   BOOTMARK_V36("01 pin TFT siap");
   pinMode(ICM_CS_PIN,OUTPUT);digitalWrite(ICM_CS_PIN,HIGH);   // IMU ICM-42688-P share bus SPI dengan TFT, CS sendiri
   pinMode(FLASH_CS_PIN,OUTPUT);digitalWrite(FLASH_CS_PIN,HIGH); // flash U7 dijamin non-aktif -- jangan sampai ikut mendorong SPI_MISO
+  pinMode(RS16_SD_CS_PIN,OUTPUT);digitalWrite(RS16_SD_CS_PIN,HIGH); // microSD CS non-aktif sampai initSdV31()
   BOOTMARK_V36("02 pin CS IMU + flash siap");
   lcdSPI.begin(TFT_SCLK,TFT_MISO,TFT_MOSI,TFT_CS);   // bus SPI dinyalakan duluan -- dipakai IMU di initImuV31() di bawah
   BOOTMARK_V36("04 SPI hidup");
@@ -11777,6 +11864,7 @@ void setup(){
   // configureMg90225HzV30() yang dipanggil dari detectAndConfigureGpsV32() (UART sudah hidup).
   prefsV31.begin("rs16v31",false);BOOTMARK_V36("09 NVS/preferences terbuka");
   loadSettingsV31();loadCompareV36();BOOTMARK_V36("10 setting dimuat");
+  setBacklightV36(true);   // kecerahan sesuai setting user
   initImuV31();Serial.printf("BOOT> 11 IMU = %s (%s)\n",imuChipNameV36(),imuConnectedV31?"TERDETEKSI":"TIDAK TERDETEKSI");Serial.flush();
   updateBatteryV31(true);Serial.printf("BOOT> 12 baterai = %.2f V\n",batteryVoltageV31);Serial.flush();
   lcdInit();BOOTMARK_V36("13 LCD di-init");
