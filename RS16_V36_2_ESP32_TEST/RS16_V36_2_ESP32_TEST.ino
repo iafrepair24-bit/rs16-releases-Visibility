@@ -1,6 +1,15 @@
 /*
+  RS16 V36.2 PCB V2 (12 Nov 2026) -- BAWAAN: RS16_ESP32_TEST = 0 = PCB utama RS16 V2 100x55
+  (Gerber/KiCad RS16_V2_KICAD_100x55):
+  - Tombol 6 lewat PCF8574A 0x38: P1 UP, P2 DOWN, P3 OK, P4 RIGHT, P5 LEFT/BACK, P0 POWER (lewat Q4,
+    logika terbalik). POWER: tekan singkat = layar off/on, tahan 2 dtk = power off (deep sleep;
+    IP5306 mematikan boost sendiri). Bangun: tombol apa saja (PCF_INT GPIO13) atau POWER (KEY IP5306).
+  - IMU U8 (SPI, CS GPIO5, SPI mode 3): ICM-42688-P ATAU LSM6DS3/LSM6DS3TR-C/LSM6DSL/LSM6DSO,
+    terdeteksi otomatis lewat WHO_AM_I. Fallback MPU6050 / LSM6 di header J_I2C1 (JP1 dijembatani).
+  - Backlight LCD GPIO14 (Q5). Perintah Serial "btn" = cek tombol + nama IMU.
+
   RS16 V36.2 ESP32-TEST (25 Okt 2026) -- varian uji di ESP32 DevKit (WROOM-32) langsung:
-  - RS16_ESP32_TEST = 1 : komponen uji. Set ke 0 untuk kembali ke PCB produksi (semua kode
+  - RS16_ESP32_TEST = 1 : komponen uji di PCB lubang. 0 = PCB utama (lihat di atas; semua kode
     produksi tetap ada, tidak ada fungsi yang dihapus).
   - Wiring uji MENGIKUTI PCB V2 100x55 (RS16_V2_KICAD) untuk semua GPIO yang sama fungsinya:
   - LCD   : ILI9341 2.8" 320x240 SPI (MOSI 23, SCLK 18, MISO 19, CS 27, DC 32, RST 33),
@@ -92,14 +101,13 @@
 struct ScreenEraseRun;
 
 // ============================================================
-// PILIH HARDWARE: 1 = ESP32 DevKit uji (MPU6050 + 6 tombol GPIO), 0 = PCB produksi RS16
+// PILIH HARDWARE: 0 = PCB utama RS16 V2 100x55 (PCF8574A + ICM-42688/LSM6DS3), 1 = ESP32 DevKit uji
+// (MPU6050 + 6 tombol GPIO di PCB lubang)
 // ============================================================
 #ifndef RS16_ESP32_TEST
-#define RS16_ESP32_TEST 1
+#define RS16_ESP32_TEST 0
 #endif
-#if RS16_ESP32_TEST
-#include "driver/rtc_io.h"   // pull-up tombol POWER selama deep sleep
-#endif
+#include "driver/rtc_io.h"   // pin bangun deep sleep (tombol POWER / PCF_INT)
 
 // ============================================================
 // MICROSD ON TFT PCB
@@ -180,8 +188,14 @@ struct ScreenEraseRun;
 #define BTN_RIGHT  4
 #define BTN_BACK   5   // = tombol LEFT fisik, dipetakan jadi BACK di logika menu
 // Update 6 Sep 2026: BTN_RIGHT sudah ikut dibaca (index 4 di BUTTON_PINS) dan dipakai untuk
-// penanda sektor manual di layar Circuit Running. PCF_BIT_POWER masih SENGAJA tidak dibaca --
-// selama rework Q4 belum dikerjakan, net BTN_POWER terjepit ~0,4 V jadi akan terbaca "ditekan terus".
+// penanda sektor manual di layar Circuit Running.
+// 12 Nov 2026 (PCB V2 100x55): POWER (P0) sekarang ikut dibaca. Di V2 tombol SW4 -> PWR_BTN_RAW
+// -> gate Q4 (2N7002), drain = BTN_POWER (pull-up R21 47k), gate pull-up R20 100k ke BATT+.
+// Akibatnya logika TERBALIK: lepas = LOW, ditekan = HIGH -> dibalik di buttonRawV36().
+// PWR_BTN_RAW juga masuk pin KEY IP5306 (tekan untuk menyalakan; dobel-tekan = IP5306 mematikan).
+#define PCF_POWER_ACTIVE_HIGH 1
+// PCF_INT (open-drain, pull-up R9 10k) -> GPIO13: turun LOW saat ada tombol berubah -> bangun deep sleep.
+#define PCF_INT_PIN 13
 #endif
 
 
@@ -3961,9 +3975,8 @@ static uint8_t selectedMenu = 0;
 // oleh hardware tapi tidak pernah di-poll sama sekali. Dipakai di layar Circuit Running untuk
 // menandai sektor manual, supaya tombol OK bisa dikembalikan fungsinya sebagai "stop sesi"
 // sesuai keputusan desain (lihat laporan-review circuit: "OK lagi saat sesi jalan -> berhenti").
-// Tombol POWER (bit P0) SENGAJA belum ikut dibaca -- selama rework Q4 belum dikerjakan, net
-// BTN_POWER terjepit dioda body ke ~0,4 V sehingga akan terbaca "ditekan terus" dan bisa
-// memicu aksi power berulang. Aktifkan setelah rework fisik selesai (audit-net-ic-pcb-produksi.md).
+// 12 Nov 2026: tombol POWER (bit P0) sekarang ikut dibaca untuk PCB V2 (logika terbalik lewat Q4).
+// Tombol yang sudah ditekan saat boot (POWER untuk menyalakan IP5306) diabaikan sampai dilepas.
 #if RS16_ESP32_TEST
 // Mode uji: 6 tombol langsung GPIO (BUTTON_PINS = nomor GPIO). Index 5 = POWER.
 static const uint8_t BUTTON_COUNT = 6;
@@ -3977,9 +3990,10 @@ static uint8_t buttonsReadGpioV36(){
   return s;
 }
 #else
-static const uint8_t BUTTON_COUNT = 5;
+// PCB V2: 6 tombol lewat PCF8574A (BUTTON_PINS = bit P0-P7). Index 5 = POWER (bit P0, logika terbalik).
+static const uint8_t BUTTON_COUNT = 6;
 static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
-  BTN_UP, BTN_DOWN, BTN_OK, BTN_BACK, BTN_RIGHT
+  BTN_UP, BTN_DOWN, BTN_OK, BTN_BACK, BTN_RIGHT, PCF_BIT_POWER
 };
 // Baca 1 byte penuh dari PCF8574 (P0-P7 sekaligus). Gagal baca (I2C error) dianggap
 // "semua tombol tidak ditekan" (0xFF) supaya aman -- tidak ada tombol nyangkut ke-trigger terus.
@@ -3990,13 +4004,8 @@ static uint8_t pcf8574ReadV36(){
 }
 #endif
 
-#if RS16_ESP32_TEST
 bool buttonLastRaw[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
 bool buttonStable[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
-#else
-bool buttonLastRaw[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH};
-bool buttonStable[BUTTON_COUNT] = {HIGH, HIGH, HIGH, HIGH, HIGH};
-#endif
 bool buttonLongSent[BUTTON_COUNT] = {false};
 uint32_t buttonChangedAt[BUTTON_COUNT] = {0};
 uint32_t buttonPressedAt[BUTTON_COUNT] = {0};
@@ -4015,7 +4024,11 @@ static void pcfRefreshV36() { pcfStateV36 = buttonsReadGpioV36(); }
 static bool buttonRawV36(uint8_t index) { return (pcfStateV36 >> index) & 0x01; }
 #else
 static void pcfRefreshV36() { pcfStateV36 = pcf8574ReadV36(); }
-static bool buttonRawV36(uint8_t index) { return (pcfStateV36 >> BUTTON_PINS[index]) & 0x01; }
+// Hasil: HIGH = lepas, LOW = ditekan. POWER (index 5) dibalik karena lewat Q4 (lihat PCF_POWER_ACTIVE_HIGH).
+static bool buttonRawV36(uint8_t index) {
+  const bool level = (pcfStateV36 >> BUTTON_PINS[index]) & 0x01;
+  return (index == 5 && PCF_POWER_ACTIVE_HIGH) ? !level : level;
+}
 #endif
 
 uint8_t updateButtonEvent(uint8_t index) {
@@ -15774,7 +15787,7 @@ static void drawBaseV31(const char* title,const char* status=nullptr){
   fillScreen(C_V31_BG); drawTopBarV31(); drawTextV31(14,39,title,C_V31_WHITE,2);
   if(status)drawTextRightV31(306,43,status,C_V31_BLUE,1); drawHLineV31(14,59,292,C_V31_BLUE);
 }
-static void markActivityV31(){ lastActivityMsV31=millis(); if(displaySleepingV31){lcdCommand(0x29);displaySleepingV31=false;screenDirtyV31=true;} }
+static void markActivityV31(){ lastActivityMsV31=millis(); if(displaySleepingV31){lcdCommand(0x29);digitalWrite(TFT_BL_PIN,HIGH);displaySleepingV31=false;screenDirtyV31=true;} }
 
 
 static uint8_t gpsEffectiveUsedSatV36(){
@@ -15881,20 +15894,23 @@ static bool imuCalActiveV31=false; static uint16_t imuCalCountV31=0; static uint
 static double calAxV31=0,calAyV31=0,calAzV31=0,calGxV31=0,calGyV31=0,calGzV31=0;
 static bool i2cWriteV31(uint8_t a,uint8_t r,uint8_t v){Wire.beginTransmission(a);Wire.write(r);Wire.write(v);return Wire.endTransmission()==0;}
 static bool i2cReadV31(uint8_t a,uint8_t r,uint8_t* b,uint8_t n){Wire.beginTransmission(a);Wire.write(r);if(Wire.endTransmission(false)!=0)return false;uint8_t got=Wire.requestFrom((int)a,(int)n,(int)true);if(got!=n)return false;for(uint8_t i=0;i<n;i++)b[i]=Wire.read();return true;}
-// ---- akses register ICM-42688-P lewat SPI (bus dipakai bareng TFT, CS sendiri di ICM_CS_PIN) ----
+// ---- akses register ICM-42688-P / LSM6DS3 lewat SPI (bus dipakai bareng TFT, CS sendiri di ICM_CS_PIN) ----
+// 12 Nov 2026: SPI mode 3 (CPOL=1, CPHA=1). ICM-42688 mendukung mode 0 & 3, LSM6DS3/LSM6DSx hanya
+// dijamin di mode 3 -> mode 3 dipakai supaya U8 bisa diisi salah satu chip tanpa ganti firmware.
+#define IMU_SPI_MODE_V36 SPI_MODE3
 static void icmWriteRegV36(uint8_t reg,uint8_t val){
-  lcdSPI.beginTransaction(SPISettings(1000000,MSBFIRST,SPI_MODE0));
+  lcdSPI.beginTransaction(SPISettings(1000000,MSBFIRST,IMU_SPI_MODE_V36));
   digitalWrite(ICM_CS_PIN,LOW);lcdSPI.transfer(reg&0x7F);lcdSPI.transfer(val);digitalWrite(ICM_CS_PIN,HIGH);
   lcdSPI.endTransaction();
 }
 static uint8_t icmReadRegV36(uint8_t reg){
-  lcdSPI.beginTransaction(SPISettings(1000000,MSBFIRST,SPI_MODE0));
+  lcdSPI.beginTransaction(SPISettings(1000000,MSBFIRST,IMU_SPI_MODE_V36));
   digitalWrite(ICM_CS_PIN,LOW);lcdSPI.transfer(reg|0x80);uint8_t v=lcdSPI.transfer(0x00);digitalWrite(ICM_CS_PIN,HIGH);
   lcdSPI.endTransaction();
   return v;
 }
 static bool icmReadBurstV36(uint8_t reg,uint8_t* buf,uint8_t n){
-  lcdSPI.beginTransaction(SPISettings(4000000,MSBFIRST,SPI_MODE0));
+  lcdSPI.beginTransaction(SPISettings(4000000,MSBFIRST,IMU_SPI_MODE_V36));
   digitalWrite(ICM_CS_PIN,LOW);lcdSPI.transfer(reg|0x80);for(uint8_t i=0;i<n;i++)buf[i]=lcdSPI.transfer(0x00);digitalWrite(ICM_CS_PIN,HIGH);
   lcdSPI.endTransaction();
   return true;
@@ -15918,6 +15934,9 @@ static bool initImuV31(){
     // Soft reset ICM-42688-P = bit0 (SOFT_RESET_CONFIG) -> 0x01. SPI tetap mode 0/3.
     icmWriteRegV36(0x11,0x01);delay(2);                 // DEVICE_CONFIG: soft reset
     delay(50);                                          // tunggu reset selesai
+    // INTF_CONFIG0: matikan antarmuka I2C (UI_SIFS_CFG=11) supaya trafik SPI LCD di SCK/MOSI yang sama
+    // tidak pernah dibaca chip sebagai I2C. Bit endian (0x30) tetap big-endian sesuai pembacaan di bawah.
+    icmWriteRegV36(0x4C,0x33);
     icmWriteRegV36(0x4E,0x0F);                          // PWR_MGMT0: accel+gyro Low Noise mode
     delay(50);                                          // startup time accel/gyro LN mode (datasheet)
     icmWriteRegV36(0x4F,0x46);                          // GYRO_CONFIG0 : +-500 dps, ODR 1kHz
@@ -15944,6 +15963,8 @@ static bool initImuV31(){
       imuWhoV31=w;imuTypeV36=IMU_TYPE_LSM6DS3_V36;
       lsmWriteRegV36(0x12,0x01);delay(20);   // CTRL3_C: SW_RESET
       lsmWriteRegV36(0x12,0x44);             // CTRL3_C: BDU=1, IF_INC=1 (auto-increment burst)
+      // CTRL4_C bit2 I2C_disable: di SPI bus bersama LCD, I2C chip dimatikan (rekomendasi ST).
+      if(imuLsmSpiV36)lsmWriteRegV36(0x13,0x04);
       lsmWriteRegV36(0x10,0x68);             // CTRL1_XL: ODR 416 Hz, +-4 g
       lsmWriteRegV36(0x11,0x64);             // CTRL2_G : ODR 416 Hz, +-500 dps (sama dengan ICM)
       delay(30);
@@ -16346,13 +16367,23 @@ static void powerOffV36(const char* reason){
   delay(1200);
   lcdCommand(0x28);
   Serial.flush();
+  digitalWrite(TFT_BL_PIN,LOW);   // backlight padam (PCB V2: Q5 off)
 #if RS16_HAS_POWER_HOLD
-  digitalWrite(POWER_HOLD_PIN,LOW);
+  digitalWrite(POWER_HOLD_PIN,LOW);   // revisi PCB lama dengan latch: di sini board langsung mati
   delay(2000);
-  // masih hidup -> suplai eksternal (USB). Tidur layar saja.
+  // 12 Nov 2026: PCB V2 100x55 TIDAK punya latch (GPIO12 tidak tersambung) -> masih hidup.
+  // Dulu jatuh ke "layar mati saja" sehingga ESP32+GPS tetap jalan. Sekarang deep sleep: beban turun,
+  // IP5306 mematikan boost sendiri saat arus beban kecil. Bangun: tombol apa saja (PCF_INT -> GPIO13 LOW)
+  // atau POWER (KEY IP5306 menyalakan lagi -> boot normal).
   pinMode(POWER_HOLD_PIN,OUTPUT);digitalWrite(POWER_HOLD_PIN,HIGH);
-  Serial.println("POWER OFF: board masih hidup (suplai eksternal?) -> layar dimatikan saja");
-  displaySleepingV31=true;
+  lcdCommand(0x10);   // ILI9341 SLEEP IN
+  {const uint32_t t0=millis();do{pcfRefreshV36();delay(20);}while(buttonRawV36(5)==LOW&&millis()-t0<5000UL);}   // tunggu POWER dilepas
+  delay(50);
+  for(uint8_t i=0;i<5&&digitalRead(PCF_INT_PIN)==LOW;i++){pcfRefreshV36();delay(10);}   // baca PCF = INT dilepas
+  pinMode(PCF_INT_PIN,INPUT);   // pull-up R9 10k di PCB
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PCF_INT_PIN,0);
+  Serial.println("POWER OFF: deep sleep, tekan tombol apa saja / POWER untuk menyalakan");Serial.flush();
+  esp_deep_sleep_start();
 #else
   // Mode uji DevKit: tidak ada latch daya -> deep sleep. Bangun (reboot) dengan tombol POWER.
   lcdCommand(0x10);   // ILI9341 SLEEP IN
@@ -17080,12 +17111,10 @@ static void serviceGpsLockPopupV36(){
 static void handleButtonsV31(){
   pcfRefreshV36();
   uint8_t up=updateButtonEvent(0),down=updateButtonEvent(1),ok=updateButtonEvent(2),back=updateButtonEvent(3),right=updateButtonEvent(4);
-#if RS16_ESP32_TEST
   // Tombol POWER (index 5): tahan 2 dtk = power off, tekan singkat = layar off/on.
   {const bool wasSleeping=displaySleepingV31;const uint8_t pwr=updateButtonEvent(5);
    if(pwr&BUTTON_EVENT_LONG){if(!otaInProgressV31)powerOffV36("POWER BUTTON");return;}
-   if(pwr&BUTTON_EVENT_SHORT){if(wasSleeping)markActivityV31();else if(!otaInProgressV31){lcdCommand(0x28);displaySleepingV31=true;}return;}}
-#endif
+   if(pwr&BUTTON_EVENT_SHORT){if(wasSleeping)markActivityV31();else if(!otaInProgressV31){lcdCommand(0x28);digitalWrite(TFT_BL_PIN,LOW);displaySleepingV31=true;}return;}}
   if(up||down||ok||back||right)markActivityV31();
   if(displaySleepingV31)return;
   if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT)moveMainV31(-1);if(down&BUTTON_EVENT_SHORT)moveMainV31(1);if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
@@ -17543,7 +17572,7 @@ static void serviceGpsRecoveryV32(){
   }
 }
 
-static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
+static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN byte=0x%02X UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
 
 // PENANDA BOOT (ditambahkan 6 Sep 2026) -- setiap langkah setup() mencetak satu baris ke Serial.
 // Tujuannya: kalau board macet/reset saat boot, baris terakhir yang muncul langsung menunjukkan
@@ -17555,8 +17584,9 @@ void setup(){
   // harus ditahan >0,4 s atau board mati lagi.
 #if RS16_HAS_POWER_HOLD
   pinMode(POWER_HOLD_PIN,OUTPUT);digitalWrite(POWER_HOLD_PIN,HIGH);
+  rtc_gpio_deinit((gpio_num_t)PCF_INT_PIN);   // lepas mode RTC sisa deep sleep -> GPIO biasa lagi
 #else
-  rtc_gpio_deinit((gpio_num_t)BTN_POWER);   // lepas mode RTC sisa deep sleep -> GPIO biasa lagi
+  rtc_gpio_deinit((gpio_num_t)BTN_POWER);     // lepas mode RTC sisa deep sleep -> GPIO biasa lagi
 #endif
   Serial.begin(115200);delay(400);
   Serial.println();
@@ -17603,13 +17633,12 @@ void setup(){
   delay(5);   // pull-up tombol stabil dulu
   pcfRefreshV36();
   for(uint8_t i=0;i<BUTTON_COUNT;i++){bool s=buttonRawV36(i);buttonLastRaw[i]=s;buttonStable[i]=s;buttonChangedAt[i]=millis();buttonLongSent[i]=false;
-#if RS16_ESP32_TEST
-    // tombol yang masih ditekan saat boot (mis. POWER sehabis bangun dari deep sleep) diabaikan
+    // tombol yang masih ditekan saat boot (mis. POWER yang ditahan untuk menyalakan) diabaikan
     // sampai dilepas -- kalau tidak, tahan >2 dtk langsung terbaca LONG = power off lagi.
     if(s==LOW)buttonLongSent[i]=true;
-#endif
   }
-  Serial.printf("BOOT> 08 tombol dibaca, byte tombol = 0x%02X\n",(unsigned)pcfStateV36);
+  Serial.printf("BOOT> 08 tombol dibaca, byte tombol = 0x%02X  (UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u, 0=ditekan)\n",
+                (unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5));
   Serial.flush();
   // FIX 6 Sep 2026: applyGnssUpdateRateV36()/applyGnssSystemV36() TIDAK dipanggil di sini lagi.
   // Dulu dipanggil di baris ini -- padahal gpsSerial.begin() baru terjadi di dalam
