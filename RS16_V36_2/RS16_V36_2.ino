@@ -140,7 +140,6 @@ static void setBacklightV36(bool on){ analogWrite(TFT_BL_PIN, on?BL_PWM_V36[back
 HardwareSerial gpsSerial(1);
 
 static const uint32_t GPS_BAUD_V30 = 115200UL;
-static const uint16_t GPS_MEAS_PERIOD_MS_V30 = 40;   // 25 Hz = 1 sample / 0.04 s
 static const uint8_t GPS_MIN_SATS_V30 = 4;
 static const float GPS_MAX_HDOP_V30 = 3.0f;
 static const uint32_t GPS_LOCK_CONFIRM_MS_V30 = 200UL;
@@ -424,7 +423,24 @@ static void configureGnssRateMsgsV36() {
   static const uint8_t nmeaIds[] = {0x00,0x01,0x02,0x03,0x04,0x05};
   for (uint8_t i = 0; i < sizeof(nmeaIds); ++i) setUbxMessageRateV30(0xF0, nmeaIds[i], 0);
 
-  Serial.printf("GNSS: MG-902 115200, UBX-PVT %u Hz, NMEA OFF\n", (unsigned)gnssRateHzV36());
+  // 12 Nov 2026: konfigurasi yang sama juga dikirim lewat UBX-CFG-VALSET (layer RAM). Perintah lama
+  // CFG-RATE/CFG-MSG di atas dipakai u-blox M8/M9, tapi chip M10 hanya menerima VALSET -- jadi rate
+  // 10/25 Hz tetap berlaku apa pun chip di dalam modul MG-902. Mengirim dua-duanya aman.
+  {
+    const uint8_t pl[]={
+      0x00,0x01,0x00,0x00,                                        // version 0, layer RAM, reserved
+      0x01,0x00,0x21,0x30, (uint8_t)(meas&0xFF),(uint8_t)(meas>>8),// CFG-RATE-MEAS (ms)
+      0x02,0x00,0x21,0x30, 0x01,0x00,                              // CFG-RATE-NAV = 1
+      0x07,0x00,0x91,0x20, 0x01,                                   // CFG-MSGOUT-UBX_NAV_PVT_UART1 = 1
+      0x39,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?2:5), // CFG-MSGOUT-UBX_NAV_DOP_UART1
+      0x16,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?5:12),// CFG-MSGOUT-UBX_NAV_SAT_UART1
+      0x02,0x00,0x74,0x10, 0x00                                    // CFG-UART1OUTPROT-NMEA = 0
+    };
+    sendUbxV30(0x06,0x8A,pl,sizeof(pl));
+    delay(20);
+  }
+
+  Serial.printf("GNSS: MG-902 115200, UBX-PVT %u Hz (%u ms), NMEA OFF\n", (unsigned)gnssRateHzV36(), (unsigned)meas);
 }
 
 static void configureMg90225HzV30() {
@@ -690,7 +706,7 @@ static void printGpsDiagnosticV30() {
   uint32_t now = millis();
   if (now - gpsDiagLastMsV30 < 2000UL) return;
   gpsDiagLastMsV30 = now;
-  Serial.printf("GNSS25 FIX=%s TYPE=%u SAT=%u HDOP=%.2f RATE=%.1fHz SPD=%.2f HACC=%.2f SACC=%.2f PVT=%lu ERR=%lu\n",
+  Serial.printf("GNSS FIX=%s TYPE=%u SAT=%u HDOP=%.2f RATE=%.1fHz SPD=%.2f HACC=%.2f SACC=%.2f PVT=%lu ERR=%lu\n",
                 gpsReadyV30() ? "LOCK" : "WAIT", gpsFixTypeV30, gpsSatellitesV30,
                 gpsHdopV30, gpsActualRateHzV30, gpsSpeedKmhV30,
                 gpsHorizontalAccuracyM_V30, gpsSpeedAccuracyKmhV30,
@@ -10983,7 +10999,8 @@ static void drawGnssSystemV36(){
 }
 static void drawGnssRateV36(){
   const char* o[2]={"10 HZ","25 HZ"};
-  drawListV36(o,nullptr,2,gnssOptionSelection,(int8_t)gnssUpdateRateIdxV36,"OK = TERAPKAN   BACK = BATAL");
+  const char* t[2]={"0.10 S / DATA","0.04 S / DATA"};
+  drawListV36(o,t,2,gnssOptionSelection,(int8_t)gnssUpdateRateIdxV36,"OK = TERAPKAN   BACK = BATAL");
 }
 static void drawGnssColdStartV36(){
   const uint32_t el=gnssColdStartMsV36?(millis()-gnssColdStartMsV36):0;
