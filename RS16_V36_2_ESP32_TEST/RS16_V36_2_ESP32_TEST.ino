@@ -15686,9 +15686,10 @@ static void drawWifiIconV34(bool enabled){
 
 static bool wifiUserEnabledV31=false;
 
-// V36.2 ikon satelit top bar:
-// - BELUM LOCK: batang abu-abu (sinyal yang sudah terlihat) + tanda SILANG merah.
-// - SUDAH LOCK (3D fix stabil): batang BIRU, tanpa silang.
+// Ikon satelit top bar (diubah 12 Nov 2026 sesuai permintaan user):
+// - BELUM DAPAT SATELIT (< 4 terlihat, belum ada batang): tanda SILANG merah.
+// - SUDAH DAPAT SATELIT, BELUM LOCK: silang hilang, batang ABU-ABU sesuai jumlah satelit.
+// - SUDAH LOCK (3D fix stabil): batang BIRU.
 static bool gpsTimingReadyV31();
 static void drawSatIconV36(){
   uint8_t bars=0;
@@ -15701,7 +15702,7 @@ static void drawSatIconV36(){
     drawRectV31(bx+i*9,19-h,6,h,C_V31_DARK);
     if(i<bars)fillRect(bx+i*9+1,20-h,4,h-2,locked?C_V31_BLUE:C_V31_GRAY);
   }
-  if(!locked){
+  if(bars==0&&!locked){
     // silang 9x9 tebal 2 px di sisi kiri ikon
     drawLineV31(276,11,284,19,C_V31_RED);drawLineV31(277,11,285,19,C_V31_RED);
     drawLineV31(284,11,276,19,C_V31_RED);drawLineV31(285,11,277,19,C_V31_RED);
@@ -15730,7 +15731,7 @@ static void drawTopBarStatusOnlyV32(){
   localTimeTextV31(tm,sizeof(tm));
   drawTextV31(205,10,tm,localTimeAvailableV34()?C_V31_WHITE:C_V31_GRAY,1);
 
-  // Real satellite bars (V36.2: silang merah sampai GPS lock)
+  // Real satellite bars (silang merah sampai satelit didapat)
   drawSatIconV36();
   // V36.1 header area clear (tanpa garis separator)
   fillRect(0,29,320,2,C_V31_BG);
@@ -15761,7 +15762,7 @@ void drawTopBarV31(){
   localTimeTextV31(tm,sizeof(tm));
   drawTextV31(205,10,tm,localTimeAvailableV34()?C_V31_WHITE:C_V31_GRAY,1);
 
-  // Satellite bars in the same upper-right zone used by V29 (V36.2: silang merah sampai GPS lock).
+  // Satellite bars in the same upper-right zone used by V29 (silang merah sampai satelit didapat).
   drawSatIconV36();
 
   // V36.1 header separator line dihapus (permintaan user) - logo tidak disentuh
