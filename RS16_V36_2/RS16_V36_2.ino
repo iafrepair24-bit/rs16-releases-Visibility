@@ -113,7 +113,10 @@ static void setBacklightV36(bool on){ analogWrite(TFT_BL_PIN, on?BL_PWM_V36[back
 
 // Tombol sekarang lewat I/O expander PCF8574 (I2C), BUKAN GPIO langsung.
 // Nilai di bawah ini index bit P0-P7 pada PCF8574, dicek silang ke netlist PCB asli.
-#define PCF8574_ADDR_V36 0x38
+#define PCF8574_ADDR_V36 0x38   // PCF8574A, A0-A2 ke GND (desain V2)
+// 13 Nov 2026: alamat dicari otomatis saat boot. PCF8574T (tanpa "A") sering terpasang sebagai pengganti
+// -- kaki sama, tapi alamatnya 0x20-0x27, bukan 0x38-0x3F -> dulu semua tombol mati.
+static uint8_t pcfAddrV36 = PCF8574_ADDR_V36;
 #define PCF_BIT_POWER 0
 #define BTN_UP     1
 #define BTN_DOWN   2
@@ -3919,7 +3922,7 @@ static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
 // Baca 1 byte penuh dari PCF8574 (P0-P7 sekaligus). Gagal baca (I2C error) dianggap
 // "semua tombol tidak ditekan" (0xFF) supaya aman -- tidak ada tombol nyangkut ke-trigger terus.
 static uint8_t pcf8574ReadV36(){
-  Wire.requestFrom((int)PCF8574_ADDR_V36,(int)1,(int)true);
+  Wire.requestFrom((int)pcfAddrV36,(int)1,(int)true);
   if(Wire.available())return Wire.read();
   return 0xFF;
 }
@@ -11843,7 +11846,7 @@ static void lcdSelfTestV36(uint32_t mhz){
   screenDirtyV31=true;
   Serial.println("LCD TEST selesai. Warna tampil = LCD & sambungan OK.");
 }
-static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd.startsWith("lcd"))lcdSelfTestV36(cmd.length()>4?(uint32_t)cmd.substring(4).toInt():0);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN byte=0x%02X UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
+static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="i2c"){Serial.print("I2C:");uint8_t n=0;for(uint8_t a=1;a<127;a++){Wire.beginTransmission(a);if(Wire.endTransmission()==0){Serial.printf(" 0x%02X",a);n++;}}Serial.printf("  (%u perangkat; PCF tombol=0x%02X, IMU MPU 0x68/69, LSM 0x6A/6B, GPS 0x42)\n",n,pcfAddrV36);}else if(cmd.startsWith("lcd"))lcdSelfTestV36(cmd.length()>4?(uint32_t)cmd.substring(4).toInt():0);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN PCF=0x%02X byte=0x%02X UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfAddrV36,(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
 
 // PENANDA BOOT (ditambahkan 6 Sep 2026) -- setiap langkah setup() mencetak satu baris ke Serial.
 // Tujuannya: kalau board macet/reset saat boot, baris terakhir yang muncul langsung menunjukkan
@@ -11871,8 +11874,17 @@ void setup(){
   Serial.printf("BOOT> 04b framebuffer %s (heap %u)\n",fbV36?"OK":"GAGAL -> gambar langsung",(unsigned)ESP.getFreeHeap());
   Wire.begin(MPU_SDA_PIN_V31,MPU_SCL_PIN_V31,100000);  // V36.2: PCF8574/PCF8574A maks 100 kHz (dulu 400 kHz, di luar spek)  // I2C sekarang cuma untuk PCF8574 (tombol)
   BOOTMARK_V36("05 I2C hidup");
-  Wire.beginTransmission(PCF8574_ADDR_V36);Wire.write(0xFF);uint8_t pcfErr=Wire.endTransmission(); // set semua pin PCF8574 sbg input
-  Serial.printf("BOOT> 06 PCF8574 0x%02X -> %s (kode %u)\n",PCF8574_ADDR_V36,pcfErr==0?"TERDETEKSI":"TIDAK MENJAWAB",(unsigned)pcfErr);
+  uint8_t pcfErr=0xFF;
+  {
+    // cari PCF8574A (0x38-0x3F) dulu, lalu PCF8574 (0x20-0x27). Tulis 0xFF = semua pin jadi input.
+    static const uint8_t base[2]={0x38,0x20};
+    for(uint8_t b=0;b<2&&pcfErr!=0;b++)for(uint8_t a=0;a<8&&pcfErr!=0;a++){
+      Wire.beginTransmission(base[b]+a);Wire.write(0xFF);
+      if(Wire.endTransmission()==0){pcfAddrV36=base[b]+a;pcfErr=0;}
+    }
+  }
+  Serial.printf("BOOT> 06 PCF8574%s 0x%02X -> %s\n",pcfAddrV36>=0x38?"A":"",pcfAddrV36,pcfErr==0?"TERDETEKSI":"TIDAK MENJAWAB (tombol tidak akan berfungsi)");
+  if(pcfErr!=0){Serial.print("BOOT> I2C scan:");for(uint8_t a=1;a<127;a++){Wire.beginTransmission(a);if(Wire.endTransmission()==0)Serial.printf(" 0x%02X",a);}Serial.println();}
   Serial.flush();
   pinMode(BUZZER_PIN_V31,OUTPUT);digitalWrite(BUZZER_PIN_V31,LOW);
   pinMode(BATTERY_ADC_PIN_V31,INPUT);analogReadResolution(12);analogSetPinAttenuation(BATTERY_ADC_PIN_V31,ADC_11db);
