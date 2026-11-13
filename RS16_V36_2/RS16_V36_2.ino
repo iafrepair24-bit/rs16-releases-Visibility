@@ -716,7 +716,7 @@ static void printGpsDiagnosticV30() {
 
 static const int16_t LCD_W = 320;
 static const int16_t LCD_H = 240;
-static const uint32_t LCD_SPI_HZ = 20000000UL;
+static uint32_t LCD_SPI_HZ = 20000000UL;   // bisa diturunkan lewat perintah Serial "lcd 10" (diagnosa)
 
 static const uint16_t C_BLACK = 0x0000;
 
@@ -11830,7 +11830,20 @@ static void serviceGpsRecoveryV32(){
   }
 }
 
-static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN byte=0x%02X UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
+// Diagnosa layar putih: "lcd" = reset + init ulang LCD lalu tampil MERAH, HIJAU, BIRU, PUTIH, HITAM
+// (masing-masing 0,6 s). "lcd 10" = sama, tapi SPI LCD diturunkan ke 10 MHz (juga "lcd 4", "lcd 20").
+// Warna muncul -> hardware LCD OK. Tetap putih -> sambungan FPC LCD / pin RST,DC,CS,SCK,MOSI.
+static void lcdSelfTestV36(uint32_t mhz){
+  if(mhz>=1&&mhz<=40)LCD_SPI_HZ=mhz*1000000UL;
+  Serial.printf("LCD TEST: SPI %lu MHz, RST=%d DC=%d CS=%d SCK=%d MOSI=%d\n",(unsigned long)(LCD_SPI_HZ/1000000UL),TFT_RST,TFT_DC,TFT_CS,TFT_SCLK,TFT_MOSI);
+  lcdInit();
+  const uint16_t c[5]={0xF800,0x07E0,0x001F,0xFFFF,0x0000};const char* n[5]={"MERAH","HIJAU","BIRU","PUTIH","HITAM"};
+  for(uint8_t i=0;i<5;i++){fillScreen(c[i]);Serial.printf("LCD TEST: %s\n",n[i]);delay(600);}
+  if(uiTestScreen==UI_MAIN_MENU)drawSelectedMenu(selectedMenu);
+  screenDirtyV31=true;
+  Serial.println("LCD TEST selesai. Warna tampil = LCD & sambungan OK.");
+}
+static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd.startsWith("lcd"))lcdSelfTestV36(cmd.length()>4?(uint32_t)cmd.substring(4).toInt():0);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN byte=0x%02X UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
 
 // PENANDA BOOT (ditambahkan 6 Sep 2026) -- setiap langkah setup() mencetak satu baris ke Serial.
 // Tujuannya: kalau board macet/reset saat boot, baris terakhir yang muncul langsung menunjukkan
