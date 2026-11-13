@@ -12934,7 +12934,12 @@ static void deleteHistoryV36(){
 static void executeConfirmV31(){switch(confirmActionV31){case 0:deleteHistoryV36();break;case 1:deleteGpsLogsV31();break;case 2:deleteHistoryV36();deleteGpsLogsV31();break;case 3:prefsV31.clear();delay(100);ESP.restart();break;case 4:ESP.restart();break;}uiTestScreen=UI_DATA_MANAGEMENT;screenDirtyV31=true;}
 
 // ---------- menu navigation ----------
-static void moveMainV31(int8_t d){selectedMenu=d<0?(selectedMenu==0?7:selectedMenu-1):(selectedMenu+1)%8;drawSelectedMenu(selectedMenu);markActivityV31();}
+// 13 Nov 2026: menu utama = grid 2 baris x 4 kolom (CARD_X/CARD_Y). Tombol bergerak sesuai arahnya:
+// UP/DOWN = pindah baris, LEFT/RIGHT = pindah kolom (melingkar). Tidak lagi harus berurutan 0..7.
+static void moveMainGridV37(int8_t dx,int8_t dy){
+  const uint8_t col=(uint8_t)((selectedMenu%4+dx+4)%4), row=(uint8_t)((selectedMenu/4+dy+2)%2);
+  selectedMenu=row*4+col;drawSelectedMenu(selectedMenu);markActivityV31();
+}
 static void moveDragV31(int8_t d){
   // V36.1 PAGE1 = 4 mode, PAGE2 = 5 item (0-100, 0-200, 0-SPEED-0, ROLLOUT, FINISH FREEZE)
   if(uiTestScreen==UI_DRAG_PAGE1){
@@ -13016,7 +13021,7 @@ static void handleButtonsV31(){
    if(pwr&BUTTON_EVENT_SHORT){if(wasSleeping)markActivityV31();else if(!otaInProgressV31){lcdCommand(0x28);setBacklightV36(false);displaySleepingV31=true;}return;}}
   if(up||down||ok||back||right)markActivityV31();
   if(displaySleepingV31)return;
-  if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT)moveMainV31(-1);if(down&BUTTON_EVENT_SHORT)moveMainV31(1);if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
+  if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT)moveMainGridV37(0,-1);if(down&BUTTON_EVENT_SHORT)moveMainGridV37(0,1);if(back&BUTTON_EVENT_SHORT)moveMainGridV37(-1,0);if(right&BUTTON_EVENT_SHORT)moveMainGridV37(1,0);if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:uiTestScreen=UI_DRAG_PAGE1;dragSelection=0;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
   if(uiTestScreen==UI_DRAG_PAGE1||uiTestScreen==UI_DRAG_PAGE2){
     if(up&BUTTON_EVENT_SHORT)moveDragV31(-1);
     if(down&BUTTON_EVENT_SHORT)moveDragV31(1);
