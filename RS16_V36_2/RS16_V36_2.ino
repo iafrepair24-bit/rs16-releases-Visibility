@@ -941,6 +941,29 @@ static bool fbBeginV36() {
   return true;
 }
 
+// 13 Nov 2026 -- ANTI-KEDIP UNTUK LAYAR BERGAMBAR (menu utama, DRAG, CIRCUIT, ACCELERATION, READY).
+// Dulu layar-layar itu digambar ulang penuh langsung ke LCD tiap tombol ditekan -> berkedip.
+// Sekarang gambar RLE didekode ke framebuffer; yang dikirim ke LCD hanya baris yang berubah.
+// Tiap layar punya "tag": saat tag berganti, palet 256 warna di-reset (semua gambar total 211 warna,
+// tidak muat bersama warna UI) dan frame pertama dikirim penuh.
+static uint8_t fbPalOwnerV37 = 0xFF;
+static bool fbFrameBeginV37(uint8_t tag) {
+  if (fbActiveV36 || !fbV36) return false;          // sudah di dalam frame lain / FB tidak tersedia
+  if (tag != fbPalOwnerV37) { fbPalOwnerV37 = tag; fbPalCountV36 = 0; fbCacheValidV36 = false; }
+  fbActiveV36 = true;
+  return true;
+}
+// Dekode gambar RLE layar penuh {count,color} ke framebuffer.
+static void rleToFbV37(const uint16_t* rle, uint32_t runs) {
+  uint32_t pos = 0; const uint32_t total = (uint32_t)LCD_W * LCD_H;
+  for (uint32_t i = 0; i < runs && pos < total; i++) {
+    uint32_t n = pgm_read_word(&rle[i * 2]);
+    const uint8_t idx = fbColorIndexV36(pgm_read_word(&rle[i * 2 + 1]));
+    if (pos + n > total) n = total - pos;
+    memset(fbV36 + pos, idx, n); pos += n;
+  }
+}
+
 // Kirim hanya baris yang berubah sejak flush terakhir.
 static void fbEndV36() {
   if (!fbActiveV36) return;
@@ -5475,6 +5498,7 @@ static const uint32_t RS16_MENU_RLE_COUNT =
 
 
 void drawMenuBitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_MENU_RLE, RS16_MENU_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
 
@@ -5637,14 +5661,14 @@ static void drawMenuSelectBoxV36(uint8_t index){
 }
 
 void drawSelectedMenu(uint8_t index) {
+  const bool fbOwnV37=fbFrameBeginV37(200);
   drawMenuBitmap();
   drawTopBarStatusOnlyV32();
 
   // V36.1 hanya menu terpilih yang dikasih kotak (sudut membulat halus, abu-abu)
   drawMenuSelectBoxV36(index);
 
-  Serial.print("SELECTED: ");
-  Serial.println(MENU_NAMES[index]);
+  if(fbOwnV37)fbEndV36();
 }
 
 struct DragP1V11RleRun {
@@ -6420,6 +6444,7 @@ static const uint32_t RS16_DRAG_P1_V11_RLE_COUNT =
   sizeof(RS16_DRAG_P1_V11_RLE) / sizeof(RS16_DRAG_P1_V11_RLE[0]);
 
 void drawDragPage1V11Bitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_DRAG_P1_V11_RLE, RS16_DRAG_P1_V11_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
   for (uint32_t i = 0; i < RS16_DRAG_P1_V11_RLE_COUNT; i++) {
@@ -7240,6 +7265,7 @@ static const uint32_t RS16_DRAG_P2_V11_RLE_COUNT =
   sizeof(RS16_DRAG_P2_V11_RLE) / sizeof(RS16_DRAG_P2_V11_RLE[0]);
 
 void drawDragPage2V11Bitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_DRAG_P2_V11_RLE, RS16_DRAG_P2_V11_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
   for (uint32_t i = 0; i < RS16_DRAG_P2_V11_RLE_COUNT; i++) {
@@ -8299,6 +8325,7 @@ static const uint32_t RS16_CIRCUIT_MENU_V22_RLE_COUNT =
   sizeof(RS16_CIRCUIT_MENU_V22_RLE) / sizeof(RS16_CIRCUIT_MENU_V22_RLE[0]);
 
 void drawCircuitMenuV22Bitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_CIRCUIT_MENU_V22_RLE, RS16_CIRCUIT_MENU_V22_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
   for (uint32_t i = 0; i < RS16_CIRCUIT_MENU_V22_RLE_COUNT; i++) {
@@ -9410,6 +9437,7 @@ static const uint32_t RS16_ACCELERATION_MENU_V24_RLE_COUNT =
   sizeof(RS16_ACCELERATION_MENU_V24_RLE) / sizeof(RS16_ACCELERATION_MENU_V24_RLE[0]);
 
 void drawAccelerationMenuV24Bitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_ACCELERATION_MENU_V24_RLE, RS16_ACCELERATION_MENU_V24_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
   for (uint32_t i = 0; i < RS16_ACCELERATION_MENU_V24_RLE_COUNT; i++) {
@@ -10528,6 +10556,7 @@ static const uint32_t RS16_IMU_CAL_MENU_V24_RLE_COUNT =
   sizeof(RS16_IMU_CAL_MENU_V24_RLE) / sizeof(RS16_IMU_CAL_MENU_V24_RLE[0]);
 
 void drawImuCalibrationMenuV24Bitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_IMU_CAL_MENU_V24_RLE, RS16_IMU_CAL_MENU_V24_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
   for (uint32_t i = 0; i < RS16_IMU_CAL_MENU_V24_RLE_COUNT; i++) {
@@ -11167,6 +11196,7 @@ static const uint32_t RS16_DRAG_STANDBY_V33_RLE_COUNT =
   sizeof(RS16_DRAG_STANDBY_V33_RLE) / sizeof(RS16_DRAG_STANDBY_V33_RLE[0]);
 
 static void drawDragStandbyV33Bitmap() {
+  if (fbActiveV36) { rleToFbV37((const uint16_t*)RS16_DRAG_STANDBY_V33_RLE, RS16_DRAG_STANDBY_V33_RLE_COUNT); return; }
   lcdStartWrite();
   lcdSetWindowTx(0, 0, LCD_W - 1, LCD_H - 1);
   for (uint32_t i = 0; i < RS16_DRAG_STANDBY_V33_RLE_COUNT; i++) {
@@ -12332,13 +12362,16 @@ static void drawSpeed0SetupV36(){
 }
 
 static void drawSelectedDragPage1V31(){
+  const bool fbOwnV37=fbFrameBeginV37(201);
   drawDragPage1V11Bitmap();
   drawScreenEraseV36(RS16_ERASE_DRAGP1,RS16_ERASE_DRAGP1_COUNT);   // V36.1 kotak grid dihapus
   drawTopBarStatusOnlyV32();
   const int16_t X[4]={18,166,18,166},Y[4]={68,68,130,130};
   drawRoundSelectV36(X[dragSelection]-4,Y[dragSelection]-4,144,58,10);
+  if(fbOwnV37)fbEndV36();
 }
 static void drawSelectedDragPage2V31(){
+  const bool fbOwnV37=fbFrameBeginV37(202);
   drawDragPage2V11Bitmap();drawTopBarStatusOnlyV32();
   // V36.1 area tile digambar ulang: menu SETUP dihapus, diganti 0-SPEED-0 + ROLLOUT + FINISH FREEZE
   fillRect(0,64,320,176,C_V31_BG);
@@ -12357,6 +12390,7 @@ static void drawSelectedDragPage2V31(){
   if(dragSelection==4)drawRoundSelectV36(18,200,284,30,10);
   drawTextV31(28,210,"FINISH FREEZE",C_V31_WHITE,1);
   drawTextRightV31(292,210,dragFreezeModeV36==0?"10 S":(dragFreezeModeV36==1?"30 S":"MANUAL"),dragSelection==4?C_V31_BLUE:C_V31_TEXT,1);
+  if(fbOwnV37)fbEndV36();
 }
 
 static const char* gpsDragQualityTextV34(){
@@ -12368,6 +12402,7 @@ static const char* gpsDragQualityTextV34(){
 }
 
 static void drawDragStandbyV31(){
+  const bool fbOwnV37=fbFrameBeginV37(206);
   drawDragStandbyV33Bitmap();
   drawTopBarStatusOnlyV32();
 
@@ -12403,6 +12438,7 @@ static void drawDragStandbyV31(){
     drawTextCenteredV31(px[i]+36,188,l,C_V31_WHITE,1);
     drawTextCenteredV31(px[i]+36,211,"--",C_V31_WHITE,1);
   }
+  if(fbOwnV37)fbEndV36();
 }
 static void drawDragRunningV31(){
   fillScreen(C_V31_BG);drawTopBarV31();
@@ -12696,11 +12732,13 @@ static void drawHistoryEmptyV31(){
 }
 
 static void drawSelectedCircuitMenuV31(){
+  const bool fbOwnV37=fbFrameBeginV37(203);
   drawCircuitMenuV22Bitmap();
   drawScreenEraseV36(RS16_ERASE_CIRCUITMENU,RS16_ERASE_CIRCUITMENU_COUNT);
   drawTopBarStatusOnlyV32();
   int y=68+circuitMenuSelection*39;
   drawRoundSelectV36(20,y-3,280,37,10);
+  if(fbOwnV37)fbEndV36();
 }
 static void drawCircuitTrackMenuV31(){const char* lab[]={"AUTO TRACK","LAST TRACK","SAVED TRACK 1","NEW TRACK"};const char* val[]={"LEARN START/FINISH",prefsV31.getBool("trk",false)?"AVAILABLE":"EMPTY",prefsV31.getBool("trk",false)?"LAST TRACK":"EMPTY","CLEAR & LEARN"};drawMenuRowsV31("TRACK",lab,val,4,circuitTrackSelection);}
 static void drawCircuitSectorMenuV31(){
@@ -12847,18 +12885,22 @@ static void drawLoggerInfoV31(){
 }
 
 static void drawSelectedAccelerationMenuV31(){
+  const bool fbOwnV37=fbFrameBeginV37(204);
   drawAccelerationMenuV24Bitmap();
   drawScreenEraseV36(RS16_ERASE_ACCELMENU,RS16_ERASE_ACCELMENU_COUNT);
   drawTopBarStatusOnlyV32();
   int y=69+accelerationSelection*39;
   drawRoundSelectV36(22,y-3,276,37,10);
+  if(fbOwnV37)fbEndV36();
 }
 static void drawSelectedImuCalMenuV31(){
+  const bool fbOwnV37=fbFrameBeginV37(205);
   drawImuCalibrationMenuV24Bitmap();
   drawScreenEraseV36(RS16_ERASE_IMUCAL,RS16_ERASE_IMUCAL_COUNT);
   drawTopBarStatusOnlyV32();
   int y=70+imuCalibrationSelection*39;
   drawRoundSelectV36(22,y-3,276,37,10);
+  if(fbOwnV37)fbEndV36();
 }
 // G-METER (diperjelas 12 Nov 2026): lingkaran 0.5 / 1.0 / 1.5 G + jejak 3 detik terakhir, titik merah = G
 // saat ini. Kolom kiri KIRI & AKSEL, kolom kanan KANAN & REM: label, angka besar (G), MAX = puncak.
@@ -13375,7 +13417,7 @@ static void renderDynamicV31(bool force=false){
   lastDynamicUiMsV31=now;
   screenDirtyV31=false;
 
-  const bool fb=uiFbScreenV36()&&fbBeginV36();   // V36.2 anti-kedip
+  const bool fb=uiFbScreenV36()&&fbFrameBeginV37((uint8_t)uiTestScreen);   // V36.2 anti-kedip (tag = layar)
   switch(uiTestScreen){
     case UI_CUSTOM_INTERVAL:drawCustomIntervalV31();break;
     case UI_SPEED0_SETUP:drawSpeed0SetupV36();break;
@@ -13434,8 +13476,8 @@ static void serviceDragReadyUiV33(){
     dragReadyLastReasonV33=reason;
     drawDragStandbyV31();
   }else{
-    // Only refresh top status values; do not redraw the whole standby screen.
-    drawTopBarStatusOnlyV32();
+    // Only refresh top status values. Dengan framebuffer: gambar ulang lewat FB (hanya baris berubah terkirim).
+    if(fbV36)drawDragStandbyV31();else drawTopBarStatusOnlyV32();
   }
 }
 
@@ -13446,6 +13488,20 @@ static void serviceTopBarOnlyV31(){
   if(now-lastTopBarOnlyMsV31<1000UL) return;
   lastTopBarOnlyMsV31=now;
   if(fbV36&&uiFbScreenV36()){screenDirtyV31=true;return;}   // V36.2: jam/baterai ikut lewat framebuffer
+  if(fbV36){
+    // layar bergambar: jam/baterai/sinyal diperbarui dengan menggambar ulang lewat framebuffer (tanpa kedip)
+    if(gpsLockPopupUntilV36)return;   // popup GPS sedang tampil di atas menu
+    switch(uiTestScreen){
+      case UI_MAIN_MENU:drawSelectedMenu(selectedMenu);return;
+      case UI_DRAG_PAGE1:drawSelectedDragPage1V31();return;
+      case UI_DRAG_PAGE2:drawSelectedDragPage2V31();return;
+      case UI_CIRCUIT_MENU:drawSelectedCircuitMenuV31();return;
+      case UI_ACCEL_MENU:drawSelectedAccelerationMenuV31();return;
+      case UI_ACCEL_CAL_MENU:drawSelectedImuCalMenuV31();return;
+      case UI_DRAG_READY:return;      // ditangani serviceDragReadyUiV33()
+      default:break;
+    }
+  }
   drawTopBarStatusOnlyV32();
 }
 
