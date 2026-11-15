@@ -12408,9 +12408,16 @@ static void handleButtonsV31(){
         const uint8_t pt=dragSetupPointV39(k);
         uint16_t* P=spdMode?speedPointKmh:customPointM;
         const int32_t lo=spdMode?5:1,hi=spdMode?400:2000;
-        const int32_t minv=pt?(int32_t)P[pt-1]+1:lo, maxv=(pt==DRAG_CP_N-1)?hi:(int32_t)P[pt+1]-1;
+        // V36.7: nilai bebas dalam batas; titik lain ikut bergeser kalau tertabrak (urutan tetap naik),
+        // jadi PRIMARY bisa langsung diturunkan tanpa harus menurunkan RANGE satu per satu dulu.
+        const int32_t minv=lo+pt, maxv=hi-(DRAG_CP_N-1-pt);
         int32_t v=(int32_t)P[pt]+d; if(v<minv)v=minv; if(v>maxv)v=maxv;
-        if(v!=P[pt]){P[pt]=(uint16_t)v;screenDirtyV31=true;}
+        if(v!=P[pt]){
+          P[pt]=(uint16_t)v;
+          for(int8_t j=(int8_t)pt-1;j>=0;j--)if(P[j]>=P[j+1])P[j]=(uint16_t)(P[j+1]-1);
+          for(uint8_t j=pt+1;j<DRAG_CP_N;j++)if(P[j]<=P[j-1])P[j]=(uint16_t)(P[j-1]+1);
+          screenDirtyV31=true;
+        }
         markActivityV31();
       }
     }else{
