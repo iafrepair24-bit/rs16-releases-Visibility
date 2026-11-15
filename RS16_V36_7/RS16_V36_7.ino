@@ -11134,7 +11134,6 @@ static void drawSelectedDragPage1V31(){
   drawDragDialV39(160,cy,60,TN[t],true);
   char sm[24];dragTypeSummaryV39(t,sm,sizeof(sm));
   drawTextCenteredV31(160,cy+2,sm,C_V31_BLUE,1);
-  drawTextCenteredV31(160,cy+18,dragRolloutEnabled?"ROLLOUT ON":"ROLLOUT OFF",C_V31_GRAY,1);
   drawTextCenteredV31(160,229,"OK = NEXT      UP / DOWN / RIGHT = GANTI MODE",C_V31_GRAY,1);
   if(fbOwnV37)fbEndV36();
 }
