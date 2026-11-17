@@ -9740,6 +9740,11 @@ Preferences prefsV31;
 
 // ---------- buzzer ----------
 #define BUZZER_PIN_V31 15
+// V36.8 LED D1 (GPS_FIX_LED, GPIO4 -> R11 1k -> D1 -> GND). Dulu tidak pernah diatur.
+// Menyala = GPS siap (lock stabil). Padam = belum lock / layar tidur / power off.
+// LED D2 (CHARGE_LED) TIDAK tersambung ke ESP32: dikendalikan langsung IC IP5306 (lihat catatan V36.8).
+#define GPS_LED_PIN_V40 4
+static void serviceGpsLedV40();
 static void buzzerPlayV31(uint16_t hz,uint16_t ms){ tone(BUZZER_PIN_V31,hz,ms); }
 // FIX 6 Sep 2026: raceBeepV31() DIHAPUS -- sisa mekanisme beep hitungan mundur 3-2-1 yang
 // fiturnya sudah dihapus total di V36.1. Fungsi ini sudah tidak pernah dipanggil dari mana pun.
@@ -10997,6 +11002,7 @@ static void powerOffV36(const char* reason){
   Serial.flush();
   setBacklightV36(false);   // backlight padam (PCB V2: Q5 off)
   lcdCommand(0x10);   // ILI9341 SLEEP IN
+  digitalWrite(GPS_LED_PIN_V40,LOW);pinMode(GPS_LED_PIN_V40,INPUT_PULLDOWN);   // V36.8 LED GPS padam saat deep sleep
   {const uint32_t t0=millis();do{pcfRefreshV36();delay(20);}while(buttonRawV36(5)==LOW&&millis()-t0<5000UL);}   // tunggu POWER dilepas
   delay(50);
   for(uint8_t i=0;i<5&&digitalRead(PCF_INT_PIN)==LOW;i++){pcfRefreshV36();delay(10);}   // baca PCF = INT dilepas
@@ -13324,6 +13330,7 @@ void setup(){
   if(pcfErr!=0){Serial.print("BOOT> I2C scan:");for(uint8_t a=1;a<127;a++){Wire.beginTransmission(a);if(Wire.endTransmission()==0)Serial.printf(" 0x%02X",a);}Serial.println();}
   Serial.flush();
   pinMode(BUZZER_PIN_V31,OUTPUT);digitalWrite(BUZZER_PIN_V31,LOW);
+  pinMode(GPS_LED_PIN_V40,OUTPUT);digitalWrite(GPS_LED_PIN_V40,LOW);   // V36.8 LED GPS padam saat boot
   pinMode(BATTERY_ADC_PIN_V31,INPUT);analogReadResolution(12);analogSetPinAttenuation(BATTERY_ADC_PIN_V31,ADC_11db);
   BOOTMARK_V36("07 buzzer + ADC baterai siap");
   delay(5);   // pull-up tombol stabil dulu
@@ -13354,6 +13361,11 @@ void setup(){
   Serial.println("RS16 V36 READY - ALL MENU ACTIONS / LIVE DATA / STABLE GNSS");Serial.printf("GNSS MG-902 UBX 25Hz, IMU %s 200Hz, RAW SPI ILI9341\n",imuChipNameV36());Serial.println(RS16_SD_ENABLED?"MICROSD COMPILE ENABLED":"MICROSD SLOT EXISTS; SET SD GPIO MAP TO ENABLE WRITES");
 }
 
+static void serviceGpsLedV40(){
+  static int8_t last=-1;
+  const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
+  if(on!=last){last=on;digitalWrite(GPS_LED_PIN_V40,on?HIGH:LOW);}
+}
 void loop(){
   // Denyut hidup: kalau baris ini muncul terus tiap 5 detik, berarti firmware jalan normal.
   // Kalau BOOT> ... berulang dari awal, berarti board reset terus (boot loop).
@@ -13362,5 +13374,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }
