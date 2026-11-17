@@ -11160,7 +11160,7 @@ static void drawCustomIntervalV31(){
     else drawLtRowV37(y,l,v,sel);
   }
   drawLtRowV37(52+4*34,"READY",">",customIntervalSelection==4);
-  drawTextCenteredV31(160,229,customIntervalEditing?"UP + / DOWN -  TAHAN = CEPAT  1-2000 M":"OK = UBAH NILAI",C_V31_GRAY,1);
+  drawTextCenteredV31(160,229,customIntervalEditing?"UP + / DOWN -  TAHAN = CEPAT  1-2000 M":"RIGHT = UBAH NILAI",C_V31_GRAY,1);
 }
 // V36.1 layar setup target speed mode 0-SPEED-0
 static void drawSpeed0SetupV36(){
@@ -11173,7 +11173,7 @@ static void drawSpeed0SetupV36(){
   drawLtRowV37(86,"READY",">",speed0Selection==1);
   drawTextCenteredV31(160,140,"0 -> TARGET -> 0",C_V31_GRAY,1);
   drawTextCenteredV31(160,158,"TIMER STOP SAAT BALIK KE 0",C_V31_GRAY,1);
-  drawTextCenteredV31(160,229,speed0Editing?"UP + / DOWN -   TAHAN = CEPAT":"OK = UBAH NILAI",C_V31_GRAY,1);
+  drawTextCenteredV31(160,229,speed0Editing?"UP + / DOWN -   TAHAN = CEPAT":"RIGHT = UBAH NILAI",C_V31_GRAY,1);
 }
 
 // ---------- V36.7 layar SETELAN DRAG (isi & urutan mengikuti Qstarz LT-8000GT, tampilan RS16) ----------
@@ -11182,11 +11182,11 @@ static void drawSpeed0SetupV36(){
 // RIGHT = START dari baris mana pun (seperti tombol Start Qstarz).
 enum DsKindV39 : uint8_t { DSK_SESSION=0, DSK_PRIMARY, DSK_R1, DSK_R2, DSK_R3, DSK_R4, DSK_COMPARE, DSK_DISPLAY, DSK_ROLLOUT, DSK_FREEZE, DSK_START };
 static bool dragModeEditableV39(){return selectedDragMode==DRAG_CUSTOM||selectedDragMode==DRAG_0_100;}
-static uint8_t dragSetupRowsV39(){return dragModeEditableV39()?11:7;}
+static uint8_t dragSetupRowsV39(){return dragModeEditableV39()?10:6;}   // V36.8: tanpa baris START
 static uint8_t dragSetupKindV39(uint8_t row){
-  if(dragModeEditableV39())return row<=10?row:DSK_START;
-  static const uint8_t k[7]={DSK_SESSION,DSK_PRIMARY,DSK_COMPARE,DSK_DISPLAY,DSK_ROLLOUT,DSK_FREEZE,DSK_START};
-  return k[row<7?row:6];
+  if(dragModeEditableV39())return row<=9?row:DSK_FREEZE;
+  static const uint8_t k[6]={DSK_SESSION,DSK_PRIMARY,DSK_COMPARE,DSK_DISPLAY,DSK_ROLLOUT,DSK_FREEZE};
+  return k[row<6?row:5];
 }
 static bool dragSetupEditableV38(uint8_t row){
   const uint8_t k=dragSetupKindV39(row);
@@ -11237,7 +11237,7 @@ static void drawDragSetupV38(){
   // penanda gulir
   if(first>0)drawTextCenteredV31(160,44,"^",C_V31_GRAY,1);
   if(first+5<rows)drawTextCenteredV31(160,222,"v",C_V31_GRAY,1);
-  drawTextCenteredV31(160,231,dragSetupEditV38?"UP + / DOWN -   TAHAN = CEPAT   OK = SIMPAN":"OK = UBAH      RIGHT = START",C_V31_GRAY,1);
+  drawTextCenteredV31(160,231,dragSetupEditV38?"UP + / DOWN -   TAHAN = CEPAT   RIGHT = SIMPAN":"RIGHT = UBAH      LEFT = KEMBALI",C_V31_GRAY,1);
 }
 static uint8_t dragTypeFromModeV39(DragModeId m){
   switch(m){case DRAG_CUSTOM:return 0;case DRAG_0_100:case DRAG_0_200:case DRAG_0_SPEED_0:return 1;case DRAG_EIGHTH:return 3;default:return 2;}
@@ -11250,7 +11250,7 @@ static void enterDragSetupV38(DragModeId m){
   if(m==DRAG_0_200||m==DRAG_0_SPEED_0)m=DRAG_0_100;else if(m==DRAG_60FT)m=DRAG_QUARTER;
   if(selectedDragMode!=m){selectedDragMode=m;prefsV31.putUChar("dmode",(uint8_t)m);}
   dragTypeV39=dragTypeFromModeV39(m);
-  dragSetupSelV38=(uint8_t)(dragSetupRowsV39()-1);dragSetupEditV38=false;   // kursor di START
+  dragSetupSelV38=dragModeEditableV39()?1:2;dragSetupEditV38=false;   // kursor di baris pertama yang bisa diubah
   uiTestScreen=UI_DRAG_SETUP_V38;screenDirtyV31=true;
 }
 
@@ -11349,7 +11349,7 @@ static void drawSelectedDragPage1V31(){
    const int16_t wl=textWidthV31("BEST",1),wv=textWidthV31(b,2),x0=160-(wl+6+wv)/2;
    drawTextV31(x0,197,"BEST",SDT,1);drawTextV31(x0+wl+6,193,b,GOLD,2);}
   for(uint8_t i=0;i<4;i++){const float x=132+i*15;const float p[8]={x+2,214,x+12,214,x+10,217,x,217};fillPolyV40(p,4,i==t?C_V31_BLUE:RGB_V40(36,50,84));}
-  drawTextCenteredV31(160,227,"UP / DOWN  GANTI MODE      OK  MASUK",SDT,1);
+  drawTextCenteredV31(160,227,"UP / DOWN  GANTI MODE      RIGHT  MASUK",SDT,1);
   if(fbOwnV37)fbEndV36();
 }
 // halaman 2 lama sudah tidak ada: semua jalur lama diarahkan ke layar pilih mode
@@ -11574,7 +11574,7 @@ static void drawDragGraphV36(){
   float tg[DRAG_CP_N];dragTargetsV31(tg);
   const float finD=dragFinishDistanceV31();
   float tgtM=finD;if(tgtM<=0.0f){for(uint8_t i=0;i<DRAG_CP_N;i++)if(tg[i]>0.0f&&dragRtV31.checkpointMs[i]!=0xFFFFFFFFUL)tgtM=0;}   // mode speed: tanpa garis target jarak
-  drawSpeedDistGraphV37(dTraceSpdV36,dTraceTV36,dTraceCountV36,dragRtV31.maxSpeedKmh,dragFinishDistV37,tgtM,dragLastRunNoV37,"BACK/RIGHT = HASIL");
+  drawSpeedDistGraphV37(dTraceSpdV36,dTraceTV36,dTraceCountV36,dragRtV31.maxSpeedKmh,dragFinishDistV37,tgtM,dragLastRunNoV37,"LEFT / RIGHT = HASIL");
 }
 // ---------- V36.2 helper gambar ----------
 // Cincin/lingkaran penuh tanpa celah: diisi per baris (ri=0 -> lingkaran penuh).
@@ -11662,12 +11662,12 @@ static void drawGnssMenuV36(){
   drawListV36(lab,val,4,gnssMenuSelection,-1,nullptr);
 }
 static void drawGnssSystemV36(){
-  drawListV36(GNSS_SYSTEM_NAME_V36,nullptr,5,gnssOptionSelection,(int8_t)gnssSystemIdxV36,"OK = TERAPKAN   BACK = BATAL");
+  drawListV36(GNSS_SYSTEM_NAME_V36,nullptr,5,gnssOptionSelection,(int8_t)gnssSystemIdxV36,"RIGHT = TERAPKAN   LEFT = BATAL");
 }
 static void drawGnssRateV36(){
   const char* o[2]={"10 HZ","25 HZ"};
   const char* t[2]={"0.10 S / DATA","0.04 S / DATA"};
-  drawListV36(o,t,2,gnssOptionSelection,(int8_t)gnssUpdateRateIdxV36,"OK = TERAPKAN   BACK = BATAL");
+  drawListV36(o,t,2,gnssOptionSelection,(int8_t)gnssUpdateRateIdxV36,"RIGHT = TERAPKAN   LEFT = BATAL");
 }
 static void drawGnssColdStartV36(){
   const uint32_t el=gnssColdStartMsV36?(millis()-gnssColdStartMsV36):0;
@@ -11676,7 +11676,7 @@ static void drawGnssColdStartV36(){
   drawTextCenteredV31(160,84,"HAPUS DATA SATELIT LAMA",C_V31_WHITE,1);
   drawTextCenteredV31(160,104,"JANGAN DIPUTUS SAAT PROSES",C_V31_GRAY,1);
   if(!gnssColdStartMsV36){
-    drawTextCenteredV31(160,146,"OK = MULAI COLD START",C_V31_BLUE,1);
+    drawTextCenteredV31(160,146,"RIGHT = MULAI COLD START",C_V31_BLUE,1);
   }else{
     char e[28];snprintf(e,sizeof(e),"%lu S",(unsigned long)(el/1000UL));
     drawTextCenteredV31(160,140,busy?"MENCARI SATELIT":"SELESAI",busy?C_V31_BLUE:C_V31_GREEN,2);
@@ -11684,7 +11684,7 @@ static void drawGnssColdStartV36(){
     char sv[24];snprintf(sv,sizeof(sv),"SAT %u  USED %u",(unsigned)gpsSatViewCountV32,(unsigned)gpsSatUsedV31);
     drawTextCenteredV31(160,196,sv,C_V31_TEXT,1);
   }
-  drawTextCenteredV31(160,229,"BACK = KEMBALI",C_V31_GRAY,1);
+  drawTextCenteredV31(160,229,"LEFT = KEMBALI",C_V31_GRAY,1);
 }
 // V36.2 HISTORY NYATA (dulu layar statis "NO SAVED HISTORY" selamanya):
 // BEST & LAST tiap mode drag (NVS cmpb/cmpl), best lap circuit (cbest), sesi logger terakhir (lg*).
@@ -11692,7 +11692,7 @@ static const uint8_t HIST_MODES_V39[4]={DRAG_CUSTOM,DRAG_0_100,DRAG_QUARTER,DRAG
 static uint8_t histModePosV39(uint8_t m){for(uint8_t k=0;k<4;k++)if(HIST_MODES_V39[k]==m)return k;return 0;}
 static uint8_t historySelV37=DRAG_CUSTOM,historySlotV37=0,historyPageV37=0;   // slot 0=BEST 1=LAST, page 0=data 1=grafik
 static void drawHistoryEmptyV31(){
-  drawBaseV31("HISTORY","OK = DETAIL");
+  drawBaseV31("HISTORY","RIGHT = DETAIL");
   // V36.7: hanya 4 mode yang ada di menu DRAG (DISTANCE, SPEED, 1/4 MILE, 1/8 MILE)
   drawTextV31(16,66,"MODE",C_V31_GRAY,1);drawTextRightV31(226,66,"BEST",C_V31_GRAY,1);drawTextRightV31(304,66,"LAST",C_V31_GRAY,1);
   char b[16],l[16];
@@ -11721,7 +11721,7 @@ static void drawHistoryEmptyV31(){
 
 // 13 Nov 2026: DETAIL HISTORY (gaya LT-8000) -- halaman DATA: waktu final, max speed, jarak,
 // waktu tiap checkpoint + kecepatan saat lewat checkpoint (dari grafik tersimpan). Halaman GRAFIK:
-// kecepatan vs waktu + strip G. UP/DOWN = BEST/LAST, RIGHT/OK = DATA <-> GRAFIK, BACK = daftar.
+// kecepatan vs waktu + strip G. UP/DOWN = BEST/LAST, RIGHT/OK = DATA <-> GRAFIK, LEFT = daftar.
 static float histSpeedAtV37(uint32_t ms){
   const HistTraceV37& h=histTraceV37;if(h.n<2)return -1;
   for(uint16_t i=1;i<h.n;i++){const uint32_t a=h.t10[i-1]*10UL,b=h.t10[i]*10UL;
@@ -11873,7 +11873,7 @@ static void drawHistCalendarV38(){
     if(runDatesV38[histDateSelV38]==0)snprintf(t,sizeof(t),"TANPA TANGGAL GPS  %u %s",(unsigned)histDayCountV38(0),u);
     drawTextCenteredV31(160,218,t,C_V31_WHITE,1);
   }
-  drawTextV31(8,231,"UP/DOWN TANGGAL",C_V31_GRAY,1);if(!histTypeV38)drawTextRightV31(312,231,"RIGHT = BEST/LAST",C_V31_GRAY,1);
+  drawTextV31(8,231,"UP/DOWN TANGGAL",C_V31_GRAY,1);
 }
 // ======================= V36.7 HISTORY ala Qstarz (ciri RS16) =======================
 // DRAG RACE / CIRCUIT RACE / LOGGER -> daftar BULAN -> KALENDER -> daftar SESI -> tabel RUN (+/- terhadap
@@ -11925,7 +11925,7 @@ static void drawHistMonthV39(){
     if(first>0)drawTextCenteredV31(160,44,"^",C_V31_GRAY,1);
     if(first+5<histMonthCntV39)drawTextCenteredV31(160,222,"v",C_V31_GRAY,1);
   }
-  drawTextV31(8,231,"OK = KALENDER",C_V31_GRAY,1);if(!histTypeV38)drawTextRightV31(312,231,"RIGHT = BEST/LAST",C_V31_GRAY,1);
+  drawTextV31(8,231,"RIGHT = KALENDER",C_V31_GRAY,1);
 }
 // ---- daftar sesi 1 tanggal (terbaru di atas) ----
 #define HIST_SESS_N_V39 40
@@ -11976,7 +11976,7 @@ static void drawHistSessV39(){
   }
   if(first>0)drawTextCenteredV31(160,44,"^",C_V31_GRAY,1);
   if(first+5<sessCntV39)drawTextCenteredV31(160,222,"v",C_V31_GRAY,1);
-  drawTextCenteredV31(160,231,"OK = TABEL RUN   BACK = KALENDER",C_V31_GRAY,1);
+  drawTextCenteredV31(160,231,"RIGHT = TABEL RUN   LEFT = KALENDER",C_V31_GRAY,1);
 }
 // ---- tabel run 1 sesi: RUN | TIME | +/- (selisih terhadap BEST sesi). Baris BEST ditandai hijau ----
 static void drawHistRunsV38(){
@@ -12004,7 +12004,7 @@ static void drawHistRunsV38(){
   }
   if(first>0)drawTextCenteredV31(160,44,"^",C_V31_GRAY,1);
   if(first+5<histSessCntV39)drawTextCenteredV31(160,222,"v",C_V31_GRAY,1);
-  drawTextCenteredV31(160,231,"OK = DETAIL   BACK = SESI",C_V31_GRAY,1);
+  drawTextCenteredV31(160,231,"RIGHT = DETAIL   LEFT = SESI",C_V31_GRAY,1);
 }
 // ---- tabel split per 10 km/h (0-10, 0-20, ...): waktu + jarak, dihitung dari grafik tersimpan ----
 static void drawHistSplitV39(const RunLogV38& r,const char* name){
@@ -12176,9 +12176,9 @@ static uint16_t histDayCountV38(uint32_t ymd){
 // ---- layar pertama HISTORY: DRAG (atas) / CIRCUIT LAP (bawah) ----
 static void histOpenTypeV38(){uiTestScreen=UI_HIST_TYPE_V38;screenDirtyV31=true;}
 static void drawHistTypeV38(){
-  const char* lab[3]={"DRAG RACE","CIRCUIT RACE","LOGGER"};const char* val[3]={">",">",">"};
-  drawMenuRowsV31("HISTORY",lab,val,3,histTypeV38);
-  drawTextCenteredV31(160,229,"OK = BUKA",C_V31_GRAY,1);
+  const char* lab[4]={"DRAG RACE","CIRCUIT RACE","LOGGER","BEST / LAST"};const char* val[4]={">",">",">",">"};
+  drawMenuRowsV31("HISTORY",lab,val,4,histTypeV38);
+  drawTextCenteredV31(160,229,"RIGHT = BUKA",C_V31_GRAY,1);
 }
 // ---- CIRCUIT: daftar sesi 1 tanggal & detail lap ----
 #define CIRC_CACHE_N_V38 60
@@ -12211,7 +12211,7 @@ static void drawHistCircListV38(){
   }
   if(first>0)drawTextCenteredV31(160,44,"^",C_V31_GRAY,1);
   if(first+5<circCountV38)drawTextCenteredV31(160,222,"v",C_V31_GRAY,1);
-  drawTextCenteredV31(160,231,"OK = DETAIL LAP   BACK = KALENDER",C_V31_GRAY,1);
+  drawTextCenteredV31(160,231,"RIGHT = DETAIL LAP   LEFT = KALENDER",C_V31_GRAY,1);
 }
 static void drawHistCircLapsV38(){
   const CircLogV38& r=circLogV38;char v[28];
@@ -12351,7 +12351,7 @@ static void drawLoggerStandbyV31(){
   char v[16];snprintf(v,sizeof(v),"%u",gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32);drawTextCenteredV31(50,123,v,C_V31_WHITE,1);
   if(gpsHdopValidV30)snprintf(v,sizeof(v),"%.1f",gpsHdopV30);else snprintf(v,sizeof(v),"--");drawTextCenteredV31(128,123,v,C_V31_WHITE,1);
   snprintf(v,sizeof(v),"%.0f Hz",gpsActualRateHzV30);drawTextCenteredV31(206,123,v,C_V31_WHITE,1);
-  drawTextV31(14,150,"WAITING TO RECORD",C_V31_BLUE,1);drawTextV31(14,169,"Press OK or move to start",C_V31_WHITE,1);
+  drawTextV31(14,150,"WAITING TO RECORD",C_V31_BLUE,1);drawTextV31(14,169,"Press START or move",C_V31_WHITE,1);
   drawTextRightV31(302,228,loggerAutoStartV31?"AUTO START ON":"AUTO START OFF",loggerAutoStartV31?C_V31_GREEN:C_V31_GRAY,1);
 }
 static void drawLoggerRecordingV31(){
@@ -12447,7 +12447,7 @@ static void drawGmeterV31(){
   col(false,146,"AKSEL",gLongV31,peakAccelGV31,C_V31_GREEN);
   col(true ,146,"REM",-gLongV31,peakBrakeGV31,C_V31_RED);
   if(!imuConnectedV31)drawTextCenteredV31(160,222,"NO IMU",C_V31_RED,2);
-  else drawTextCenteredV31(160,226,"OK = RESET MAX",C_V31_DARK,1);
+  else drawTextCenteredV31(160,226,"RIGHT = RESET MAX",C_V31_DARK,1);
 }
 static void drawImuCalRunningV31(){drawBaseV31("IMU CALIBRATION",imuConnectedV31?"SAMPLING":"NO IMU");uint16_t rawPct=(uint16_t)(imuCalCountV31/4);uint8_t pct=(uint8_t)((rawPct>100)?100:rawPct);char p[16];snprintf(p,sizeof(p),"%u%%",pct);drawTextCenteredV31(160,89,"KEEP VEHICLE STILL",C_V31_WHITE,2);drawPanelV31(42,130,236,20);fillRect(45,133,(int)(230*pct/100),14,C_V31_BLUE);drawTextCenteredV31(160,169,p,C_V31_WHITE,2);drawTextCenteredV31(160,202,imuCalActiveV31?"REAL SENSOR SAMPLING":"CALIBRATION COMPLETE",imuCalActiveV31?C_V31_GRAY:C_V31_GREEN,1);}
 static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
@@ -12486,7 +12486,7 @@ static void sdDataTextV38(char* o,size_t n){
 }
 static void drawSettingsMenuV31(){char ao[16],snd[8];uint8_t m=AUTO_SHUTDOWN_MINUTES_V31[autoShutdownIndexV31];if(m)snprintf(ao,sizeof(ao),"%u MIN",m);else snprintf(ao,sizeof(ao),"OFF");boolTextV31(soundCountdownV31||soundFinishV31||soundLowBatteryV31,snd,sizeof(snd));const char* lab[]={"DISPLAY","AUTO SHUTDOWN","SOUND","SYSTEM INFO","UNIT"};char bl[8];snprintf(bl,sizeof(bl),"%u%%",(unsigned)((backlightLevelV36+1)*25));const char* val[]={bl,ao,snd,"DEVICE / VERSION",unitMphV31?"MPH":"KPH"};drawMenuRowsV31("SETTINGS",lab,val,5,settingsSelection);{uint32_t u,t;const uint8_t pc=flashDataPctV38(&u,&t);char fl[28];if(runFsOkV38)snprintf(fl,sizeof(fl),"FLASH %u%%",pc);else snprintf(fl,sizeof(fl),"FLASH --");drawTextV31(14,226,fl,runFsOkV38?(pc>=90?C_V31_RED:C_V31_GRAY):C_V31_RED,1);char sd2[28];uint8_t sp=0;if(sdReadyV31){sp=sdPctV38();snprintf(sd2,sizeof(sd2),"MICRO SD %u%%",sp);}else snprintf(sd2,sizeof(sd2),"MICRO SD --");drawTextRightV31(306,226,sd2,sdReadyV31?(sp>=90?C_V31_RED:C_V31_GRAY):C_V31_DARK,1);}}
 static uint8_t displayBlSelV36=3;
-static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %","75 %","100 %"};drawListV36(o,nullptr,4,displayBlSelV36,(int8_t)backlightLevelV36,"KECERAHAN  OK = SIMPAN  BACK = BATAL");}
+static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %","75 %","100 %"};drawListV36(o,nullptr,4,displayBlSelV36,(int8_t)backlightLevelV36,"KECERAHAN  RIGHT = SIMPAN  LEFT = BATAL");}
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
@@ -12494,7 +12494,7 @@ static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.8");char gps
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
-static void drawConfirmV31(){drawBaseV31("CONFIRM ACTION","SAFETY");const char* a[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};drawTextCenteredV31(160,92,a[confirmActionV31],C_V31_RED,2);drawTextCenteredV31(160,139,"HOLD OK 2 SEC TO CONFIRM",C_V31_WHITE,1);drawTextCenteredV31(160,168,"CANCEL AVAILABLE",C_V31_BLUE,1);}
+static void drawConfirmV31(){drawBaseV31("CONFIRM ACTION","SAFETY");const char* a[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};drawTextCenteredV31(160,92,a[confirmActionV31],C_V31_RED,2);drawTextCenteredV31(160,139,"HOLD RIGHT 2 SEC TO CONFIRM",C_V31_WHITE,1);drawTextCenteredV31(160,168,"CANCEL AVAILABLE",C_V31_BLUE,1);}
 static void deleteGpsLogsV31(){
 #if RS16_SD_ENABLED
   if(!sdReadyV31)return;File root=SD.open("/");if(!root)return;File f=root.openNextFile();while(f){String name=f.name();if(!name.startsWith("/"))name="/"+name;bool dir=f.isDirectory();f.close();if(!dir&&(name.startsWith("/LOG_")||name=="/RS16_LOG.CSV"))SD.remove(name);f=root.openNextFile();}root.close();
@@ -12580,6 +12580,28 @@ static uint32_t gpsSatelliteLastSeqV35=0;
 // V36.2: DRAG / CIRCUIT / GPS LOGGER terkunci sampai GPS lock (3D fix stabil), seperti Qstarz.
 // Popup muncul di atas menu utama ~2 detik lalu menu digambar ulang.
 static uint32_t gpsLockPopupUntilV36=0;
+// V36.8 pertanyaan MATIKAN ALAT (tahan tombol POWER): digambar di atas layar yang sedang tampil
+static bool powerAskV40=false;static uint8_t powerAskSelV40=1;   // 0 = YES, 1 = NO
+static void drawSelectedDragPage1V31();
+static void drawPowerAskV40(){
+  drawPanelV31(36,66,248,116,true);
+  drawTextCenteredV31(160,78,"MATIKAN ALAT?",C_V31_WHITE,2);
+  for(uint8_t i=0;i<2;i++){
+    const int16_t x=56+i*108;const bool sel=powerAskSelV40==i;
+    fillRect(x,106,100,34,C_V31_PANEL);
+    if(sel)drawRoundSelectV36(x,106,100,34,9,i==0?C_V31_RED:C_V31_BLUE);
+    drawTextCenteredV31(x+50,116,i==0?"YES":"NO",sel?C_V31_WHITE:C_V31_GRAY,2);
+  }
+  drawTextCenteredV31(160,154,"UP / DOWN PILIH    RIGHT = OK",C_V31_GRAY,1);
+}
+static void powerAskCloseV40(){
+  powerAskV40=false;screenDirtyV31=true;
+  if(uiTestScreen==UI_MAIN_MENU)drawSelectedMenu(selectedMenu);
+  else if(uiTestScreen==UI_DRAG_PAGE1||uiTestScreen==UI_DRAG_PAGE2)drawSelectedDragPage1V31();
+  else if(uiTestScreen==UI_CIRCUIT_MENU)drawSelectedCircuitMenuV31();
+  else if(uiTestScreen==UI_ACCEL_MENU)drawSelectedAccelerationMenuV31();
+}
+static bool circuitStartReqV40=false;   // START ditekan di menu circuit -> langsung mulai di layar standby
 static void showGpsLockPopupV36(){
   drawPanelV31(36,78,248,92,true);
   drawTextCenteredV31(160,90,"GPS BELUM LOCK",C_V31_RED,2);
@@ -12599,18 +12621,32 @@ static void serviceGpsLockPopupV36(){
 
 static void handleButtonsV31(){
   pcfRefreshV36();
-  uint8_t up=updateButtonEvent(0),down=updateButtonEvent(1),ok=updateButtonEvent(2),back=updateButtonEvent(3),right=updateButtonEvent(4);
+  // V36.8 susunan tombol: kiri = START, UP, DOWN | kanan = POWER, RIGHT (masuk/pilih), LEFT (kembali).
+  // "ok" di seluruh fungsi ini sekarang = tombol RIGHT. START hanya bekerja di layar setelan drag,
+  // layar READY/FINISH drag dan menu/standby circuit -- di layar lain tidak berfungsi.
+  uint8_t up=updateButtonEvent(0),down=updateButtonEvent(1),start=updateButtonEvent(2),back=updateButtonEvent(3),right=updateButtonEvent(4);
+  uint8_t ok=right;
   // Tombol POWER (index 5): tahan 2 dtk = power off, tekan singkat = layar off/on.
   {const bool wasSleeping=displaySleepingV31;const uint8_t pwr=updateButtonEvent(5);
-   if(pwr&BUTTON_EVENT_LONG){if(!otaInProgressV31)powerOffV36("POWER BUTTON");return;}
+   if(pwr&BUTTON_EVENT_LONG){   // V36.8: tahan POWER = tanya dulu YES / NO
+     if(!otaInProgressV31){if(displaySleepingV31)markActivityV31();powerAskV40=true;powerAskSelV40=1;drawPowerAskV40();}
+     return;}
    if(pwr&BUTTON_EVENT_SHORT){if(wasSleeping)markActivityV31();else if(!otaInProgressV31){lcdCommand(0x28);setBacklightV36(false);displaySleepingV31=true;}return;}}
-  if(up||down||ok||back||right)markActivityV31();
+  if(up||down||start||back||right)markActivityV31();
   if(displaySleepingV31)return;
-  if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT)moveMainGridV37(0,-1);if(down&BUTTON_EVENT_SHORT)moveMainGridV37(0,1);if(back&BUTTON_EVENT_SHORT)moveMainGridV37(-1,0);if(right&BUTTON_EVENT_SHORT)moveMainGridV37(1,0);if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:/* lingkaran mode di mode yang terakhir dipakai */dragTypeV39=dragTypeFromModeV39(selectedDragMode);uiTestScreen=UI_DRAG_PAGE1;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:histOpenTypeV38();break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
+  if(powerAskV40){
+    if((up|down)&BUTTON_EVENT_SHORT){powerAskSelV40^=1;drawPowerAskV40();}
+    if(ok&BUTTON_EVENT_SHORT){
+      if(powerAskSelV40==0){powerAskV40=false;powerOffV36("POWER BUTTON");return;}
+      powerAskCloseV40();
+    }else if(back&BUTTON_EVENT_SHORT)powerAskCloseV40();
+    return;
+  }
+  if(uiTestScreen==UI_MAIN_MENU){if(up&BUTTON_EVENT_SHORT){selectedMenu=(uint8_t)((selectedMenu+7)%8);drawSelectedMenu(selectedMenu);}if(down&BUTTON_EVENT_SHORT){selectedMenu=(uint8_t)((selectedMenu+1)%8);drawSelectedMenu(selectedMenu);}if(ok&BUTTON_EVENT_SHORT&&selectedMenu<=2&&!gpsTimingReadyV31()){showGpsLockPopupV36();return;}if(ok&BUTTON_EVENT_SHORT){switch(selectedMenu){case 0:/* lingkaran mode di mode yang terakhir dipakai */dragTypeV39=dragTypeFromModeV39(selectedDragMode);uiTestScreen=UI_DRAG_PAGE1;drawSelectedDragPage1V31();break;case 1:uiTestScreen=UI_CIRCUIT_MENU;circuitMenuSelection=0;drawSelectedCircuitMenuV31();break;case 2:uiTestScreen=UI_GPS_LOGGER_MENU;gpsLoggerSelection=0;screenDirtyV31=true;break;case 3:uiTestScreen=UI_GNSS_MENU;gnssMenuSelection=0;screenDirtyV31=true;break;case 4:uiTestScreen=UI_ACCEL_MENU;accelerationSelection=0;drawSelectedAccelerationMenuV31();break;case 5:histOpenTypeV38();break;case 6:uiTestScreen=UI_APPLICATION_MENU;applicationSelection=0;screenDirtyV31=true;break;case 7:uiTestScreen=UI_SETTINGS_MENU;settingsSelection=0;screenDirtyV31=true;break;}}return;}
   if(uiTestScreen==UI_DRAG_PAGE1||uiTestScreen==UI_DRAG_PAGE2){
     // V36.7 pilih mode: RIGHT / DOWN = berikutnya, UP = sebelumnya, OK = setelan mode itu
     uiTestScreen=UI_DRAG_PAGE1;
-    if((right|down)&BUTTON_EVENT_SHORT){dragTypeV39=(uint8_t)((dragTypeV39+1)&3);drawSelectedDragPage1V31();}
+    if(down&BUTTON_EVENT_SHORT){dragTypeV39=(uint8_t)((dragTypeV39+1)&3);drawSelectedDragPage1V31();}
     if(up&BUTTON_EVENT_SHORT){dragTypeV39=(uint8_t)((dragTypeV39+3)&3);drawSelectedDragPage1V31();}
     if(ok&BUTTON_EVENT_SHORT){enterDragSetupV38(dragModeFromTypeV39(dragTypeV39));return;}
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}
@@ -12647,9 +12683,9 @@ static void handleButtonsV31(){
       if(up&BUTTON_EVENT_SHORT){dragSetupSelV38=dragSetupSelV38?dragSetupSelV38-1:rows-1;screenDirtyV31=true;}
       if(down&BUTTON_EVENT_SHORT){dragSetupSelV38=(uint8_t)((dragSetupSelV38+1)%rows);screenDirtyV31=true;}
     }
-    // RIGHT = START dari baris mana pun; OK di baris START juga
-    if((right&BUTTON_EVENT_SHORT)||((ok&BUTTON_EVENT_SHORT)&&k==DSK_START)){
-      dragSetupEditV38=false;commit();enterDragStandbyV31((uint8_t)selectedDragMode);return;
+    // V36.8: baris START tidak ada lagi; mulai lewat tombol START
+    if(start&BUTTON_EVENT_SHORT){   // V36.8 tombol START: langsung READY + siap jalan
+      dragSetupEditV38=false;commit();enterDragStandbyV31((uint8_t)selectedDragMode);startDragRunV31();return;
     }
     if(ok&BUTTON_EVENT_SHORT){
       if(dragSetupEditableV38(i)){dragSetupEditV38=!dragSetupEditV38;if(!dragSetupEditV38)commit();}
@@ -12660,8 +12696,7 @@ static void handleButtonsV31(){
       screenDirtyV31=true;
     }
     if(back&BUTTON_EVENT_SHORT){
-      if(dragSetupEditV38){dragSetupEditV38=false;commit();screenDirtyV31=true;}
-      else{commit();uiTestScreen=UI_DRAG_PAGE1;drawSelectedDragPage1V31();}
+      dragSetupEditV38=false;commit();uiTestScreen=UI_DRAG_PAGE1;drawSelectedDragPage1V31();   // V36.8: LEFT sekali langsung kembali
     }
     return;
   }
@@ -12718,9 +12753,9 @@ static void handleButtonsV31(){
     }
     return;
   }
-  if(uiTestScreen==UI_DRAG_READY){if(ok&BUTTON_EVENT_SHORT)startDragRunV31();if(back&BUTTON_EVENT_SHORT){enterDragSetupV38(selectedDragMode);}return;}
+  if(uiTestScreen==UI_DRAG_READY){if(start&BUTTON_EVENT_SHORT)startDragRunV31();if(back&BUTTON_EVENT_SHORT){enterDragSetupV38(selectedDragMode);}return;}
   if(uiTestScreen==UI_DRAG_RUNNING){if(back&BUTTON_EVENT_SHORT){finishDragV31(false);}return;}
-  if(uiTestScreen==UI_DRAG_FINISH){if(right&BUTTON_EVENT_SHORT){dragFinishGraphV36=!dragFinishGraphV36;dragFinishShownMsV36=millis();screenDirtyV31=true;}if(ok&BUTTON_EVENT_SHORT){dragArmFromFinishV37();}if((back&BUTTON_EVENT_SHORT)&&dragFinishGraphV36){dragFinishGraphV36=false;dragFinishShownMsV36=millis();screenDirtyV31=true;back=0;}if(back&BUTTON_EVENT_SHORT){enterDragSetupV38(selectedDragMode);}return;}
+  if(uiTestScreen==UI_DRAG_FINISH){if(right&BUTTON_EVENT_SHORT){dragFinishGraphV36=!dragFinishGraphV36;dragFinishShownMsV36=millis();screenDirtyV31=true;}if(start&BUTTON_EVENT_SHORT){dragArmFromFinishV37();}if(back&BUTTON_EVENT_SHORT){dragFinishGraphV36=false;enterDragSetupV38(selectedDragMode);}return;}
   if(uiTestScreen==UI_GNSS_MENU){
     if(up&BUTTON_EVENT_SHORT){gnssMenuSelection=gnssMenuSelection?gnssMenuSelection-1:3;screenDirtyV31=true;}
     if(down&BUTTON_EVENT_SHORT){gnssMenuSelection=(gnssMenuSelection+1)%4;screenDirtyV31=true;}
@@ -12755,9 +12790,9 @@ static void handleButtonsV31(){
   if(uiTestScreen==UI_GPS_SATELLITE){if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_HIST_TYPE_V38){
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);return;}
-    if(up&BUTTON_EVENT_SHORT){histTypeV38=histTypeV38?histTypeV38-1:2;screenDirtyV31=true;}
-    if(down&BUTTON_EVENT_SHORT){histTypeV38=(histTypeV38+1)%3;screenDirtyV31=true;}
-    if((ok|right)&BUTTON_EVENT_SHORT){if(histTypeV38==2)histOpenLogV39();else histOpenMonthV39();}
+    if(up&BUTTON_EVENT_SHORT){histTypeV38=histTypeV38?histTypeV38-1:3;screenDirtyV31=true;}
+    if(down&BUTTON_EVENT_SHORT){histTypeV38=(histTypeV38+1)%4;screenDirtyV31=true;}
+    if(ok&BUTTON_EVENT_SHORT){if(histTypeV38==3){histTypeV38=0;uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;}else if(histTypeV38==2)histOpenLogV39();else histOpenMonthV39();}
     return;
   }
   if(uiTestScreen==UI_HIST_LOG_V39){
@@ -12770,7 +12805,6 @@ static void handleButtonsV31(){
   }
   if(uiTestScreen==UI_HIST_MONTH_V39){
     if(back&BUTTON_EVENT_SHORT){histOpenTypeV38();return;}
-    if(right&BUTTON_EVENT_SHORT&&!histTypeV38){uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;return;}   // tabel BEST/LAST per mode
     if(histMonthCntV39){
       if(up&BUTTON_EVENT_SHORT){histMonthSelV39=histMonthSelV39?histMonthSelV39-1:histMonthCntV39-1;screenDirtyV31=true;}
       if(down&BUTTON_EVENT_SHORT){histMonthSelV39=(histMonthSelV39+1)%histMonthCntV39;screenDirtyV31=true;}
@@ -12807,7 +12841,6 @@ static void handleButtonsV31(){
   }
   if(uiTestScreen==UI_HIST_CAL_V38){
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_HIST_MONTH_V39;screenDirtyV31=true;return;}
-    if(right&BUTTON_EVENT_SHORT&&!histTypeV38){uiTestScreen=UI_HISTORY_EMPTY;screenDirtyV31=true;return;}   // BEST/LAST per mode (lama)
     if(runDateCountV38){
       // UP = tanggal lebih baru, DOWN = lebih lama; grup "tanpa tanggal" (0) dilewati, dibuka dari daftar bulan
       if(up&BUTTON_EVENT_SHORT){uint8_t d=(histDateSelV38+1)%runDateCountV38;if(runDatesV38[d]==0&&runDateCountV38>1)d=(d+1)%runDateCountV38;histDateSelV38=d;screenDirtyV31=true;}
@@ -12837,7 +12870,7 @@ static void handleButtonsV31(){
     return;
   }
   if(uiTestScreen==UI_HISTORY_EMPTY){
-    if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_HIST_MONTH_V39;screenDirtyV31=true;return;}   // V36.7 kembali ke daftar bulan
+    if(back&BUTTON_EVENT_SHORT){histOpenTypeV38();return;}   // V36.8 kembali ke daftar jenis history
     if(up&BUTTON_EVENT_SHORT){historySelV37=HIST_MODES_V39[(histModePosV39(historySelV37)+3)%4];screenDirtyV31=true;}
     if(down&BUTTON_EVENT_SHORT){historySelV37=HIST_MODES_V39[(histModePosV39(historySelV37)+1)%4];screenDirtyV31=true;}
     if((ok|right)&BUTTON_EVENT_SHORT){
@@ -12854,7 +12887,7 @@ static void handleButtonsV31(){
     if((up|down)&BUTTON_EVENT_SHORT){const uint8_t o=historySlotV37^1;if(o?dragLastV36[m].total:dragBestV36[m].total){historySlotV37=o;screenDirtyV31=true;}}
     return;
   }
-  if(uiTestScreen==UI_CIRCUIT_MENU){if(up&BUTTON_EVENT_SHORT){circuitMenuSelection=circuitMenuSelection?circuitMenuSelection-1:3;drawSelectedCircuitMenuV31();}if(down&BUTTON_EVENT_SHORT){circuitMenuSelection=(circuitMenuSelection+1)%4;drawSelectedCircuitMenuV31();}if(ok&BUTTON_EVENT_SHORT){if(circuitMenuSelection==0){uiTestScreen=UI_CIRCUIT_STANDBY;screenDirtyV31=true;}else if(circuitMenuSelection==1){uiTestScreen=UI_CIRCUIT_TRACK;circuitTrackSelection=0;screenDirtyV31=true;}else if(circuitMenuSelection==2){uiTestScreen=UI_CIRCUIT_SECTOR;circuitSectorSelection=0;screenDirtyV31=true;}else{uiTestScreen=UI_CIRCUIT_SETUP;circuitSetupSelection=0;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}return;}
+  if(uiTestScreen==UI_CIRCUIT_MENU){if(start&BUTTON_EVENT_SHORT){circuitStartReqV40=true;uiTestScreen=UI_CIRCUIT_STANDBY;screenDirtyV31=true;return;}if(up&BUTTON_EVENT_SHORT){circuitMenuSelection=circuitMenuSelection?circuitMenuSelection-1:3;drawSelectedCircuitMenuV31();}if(down&BUTTON_EVENT_SHORT){circuitMenuSelection=(circuitMenuSelection+1)%4;drawSelectedCircuitMenuV31();}if(ok&BUTTON_EVENT_SHORT){if(circuitMenuSelection==0){uiTestScreen=UI_CIRCUIT_STANDBY;screenDirtyV31=true;}else if(circuitMenuSelection==1){uiTestScreen=UI_CIRCUIT_TRACK;circuitTrackSelection=0;screenDirtyV31=true;}else if(circuitMenuSelection==2){uiTestScreen=UI_CIRCUIT_SECTOR;circuitSectorSelection=0;screenDirtyV31=true;}else{uiTestScreen=UI_CIRCUIT_SETUP;circuitSetupSelection=0;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}return;}
 if(uiTestScreen==UI_CIRCUIT_TRACK){
     if(up&BUTTON_EVENT_SHORT)circuitTrackSelection=circuitTrackSelection?circuitTrackSelection-1:3;
     if(down&BUTTON_EVENT_SHORT)circuitTrackSelection=(circuitTrackSelection+1)%4;
@@ -12906,8 +12939,9 @@ if(uiTestScreen==UI_CIRCUIT_SECTOR){
   }
   if(uiTestScreen==UI_CIRCUIT_SETUP){if(up&BUTTON_EVENT_SHORT)circuitSetupSelection=circuitSetupSelection?circuitSetupSelection-1:3;if(down&BUTTON_EVENT_SHORT)circuitSetupSelection=(circuitSetupSelection+1)%4;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){if(circuitSetupSelection==0)circuitAutoLapV31=!circuitAutoLapV31;else if(circuitSetupSelection==1)circuitAutoStartV31=!circuitAutoStartV31;else if(circuitSetupSelection==2)circuitSectorPopupV31=!circuitSectorPopupV31;else circuitBeepV31=!circuitBeepV31;saveSettingsV31();screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_CIRCUIT_MENU;drawSelectedCircuitMenuV31();}return;}
 if(uiTestScreen==UI_CIRCUIT_STANDBY){
-    bool request=(ok&BUTTON_EVENT_SHORT)||
+    bool request=((start|ok)&BUTTON_EVENT_SHORT)||circuitStartReqV40||
                  (circuitAutoStartV31&&gpsTimingReadyV31()&&gpsSpeedKmhV30>5.0f);
+    circuitStartReqV40=false;
     if(request){
       if(!gpsTimingReadyV31()){
         screenDirtyV31=true;
@@ -12940,7 +12974,7 @@ if(uiTestScreen==UI_CIRCUIT_RUNNING){
       screenDirtyV31=true;
     }
     // OK sekarang menghentikan sesi (sesuai keputusan desain), sama seperti BACK.
-    if((ok|back)&BUTTON_EVENT_SHORT){
+    if(back&BUTTON_EVENT_SHORT){   // V36.8: berhenti = LEFT (RIGHT dipakai penanda sektor manual)
       circuitRtV31.active=false;
       circLogSaveV38(circuitRtV31.lapCount,circuitRtV31.bestLapMs,circuitRtV31.maxSpeed);   // V36.6 simpan sesi ke HISTORY
       uiTestScreen=UI_CIRCUIT_FINISH;
@@ -12949,7 +12983,7 @@ if(uiTestScreen==UI_CIRCUIT_RUNNING){
     }
     return;
   }
-  if(uiTestScreen==UI_CIRCUIT_FINISH){if(ok&BUTTON_EVENT_SHORT){uiTestScreen=UI_CIRCUIT_STANDBY;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_CIRCUIT_MENU;drawSelectedCircuitMenuV31();}return;}
+  if(uiTestScreen==UI_CIRCUIT_FINISH){if((start|ok)&BUTTON_EVENT_SHORT){uiTestScreen=UI_CIRCUIT_STANDBY;screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_CIRCUIT_MENU;drawSelectedCircuitMenuV31();}return;}
 if(uiTestScreen==UI_GPS_LOGGER_MENU){
     if(up&BUTTON_EVENT_SHORT)gpsLoggerSelection=gpsLoggerSelection?gpsLoggerSelection-1:3;
     if(down&BUTTON_EVENT_SHORT)gpsLoggerSelection=(gpsLoggerSelection+1)%4;
@@ -13041,7 +13075,7 @@ if(uiTestScreen==UI_ACCEL_CAL_MENU){
   if(uiTestScreen==UI_APPLICATION_FW_UPDATE){if(back&BUTTON_EVENT_SHORT&&!otaInProgressV31){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_SETTINGS_MENU){if(up&BUTTON_EVENT_SHORT)settingsSelection=settingsSelection?settingsSelection-1:4;if(down&BUTTON_EVENT_SHORT)settingsSelection=(settingsSelection+1)%5;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){if(settingsSelection==4){unitMphV31=!unitMphV31;saveSettingsV31();screenDirtyV31=true;}else{uiTestScreen=(UiTestScreen)(UI_SETTINGS_DISPLAY+settingsSelection);soundSelV36=0;displayBlSelV36=backlightLevelV36;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}return;}
   if(uiTestScreen==UI_SETTINGS_DISPLAY){
-    // pratinjau langsung saat UP/DOWN, OK = simpan, BACK = kembalikan level lama
+    // pratinjau langsung saat UP/DOWN, OK = simpan, LEFT = kembalikan level lama
     if(up&BUTTON_EVENT_SHORT){displayBlSelV36=displayBlSelV36?displayBlSelV36-1:3;}
     if(down&BUTTON_EVENT_SHORT){displayBlSelV36=(displayBlSelV36+1)&3;}
     if((up|down)&BUTTON_EVENT_SHORT){analogWrite(TFT_BL_PIN,BL_PWM_V36[displayBlSelV36]);screenDirtyV31=true;}
@@ -13187,7 +13221,7 @@ static void serviceTopBarOnlyV31(){
   if(fbV36&&uiFbScreenV36()){screenDirtyV31=true;return;}   // V36.2: jam/baterai ikut lewat framebuffer
   if(fbV36){
     // layar bergambar: jam/baterai/sinyal diperbarui dengan menggambar ulang lewat framebuffer (tanpa kedip)
-    if(gpsLockPopupUntilV36)return;   // popup GPS sedang tampil di atas menu
+    if(gpsLockPopupUntilV36||powerAskV40)return;   // popup GPS sedang tampil di atas menu
     switch(uiTestScreen){
       case UI_MAIN_MENU:drawSelectedMenu(selectedMenu);return;
       case UI_DRAG_PAGE1:drawSelectedDragPage1V31();return;
