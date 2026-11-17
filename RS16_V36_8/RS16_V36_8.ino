@@ -10461,6 +10461,10 @@ static void dragTraceAddV36(float kmh,uint32_t ms){
   dTracePitchV38[dTraceCountV36]=(int8_t)constrain(imuConnectedV31?attPitchV38:0.0f,-90.0f,90.0f);
   dTraceCountV36++;
 }
+// V36.8 batas BERHENTI di tengah run (kecepatan <= 1 km/h terus-menerus):
+//  - belum lewat range pertama : 0,5 detik -> run dibuang, timer kembali 0, siap start lagi
+//  - sudah lewat range pertama : 2,0 detik -> run disimpan (STOP), timer kembali 0, siap start lagi
+static const uint32_t DRAG_STOP_DISCARD_MS_V40=500UL, DRAG_STOP_SAVE_MS_V40=2000UL;
 static bool dragRunStopV37=false; static uint32_t dragRunStopTowV37=0;   // 13 Nov 2026: deteksi berhenti di tengah run
 static void resetDragRuntimeV31(){dragRunStopV37=false;dTraceCountV36=0;dTraceStepV36=1;dTraceSkipV36=0;memset(&dragRtV31,0,sizeof(dragRtV31));for(uint8_t i=0;i<DRAG_CP_N;i++)dragRtV31.checkpointMs[i]=0xFFFFFFFFUL;speed0ZeroCountV36=0;resetTelemetryV31();}
 static float dragFinishDistanceV31(){switch(selectedDragMode){case DRAG_QUARTER:return 402.336f;case DRAG_EIGHTH:return 201.168f;case DRAG_60FT:return 18.288f;case DRAG_CUSTOM:return customPointM[DRAG_CP_N-1];default:return 0;}}
@@ -10663,6 +10667,7 @@ static bool circLogReadV38(uint32_t ymd,uint16_t idx){
 static uint32_t dragFinishShownMsV36=0;
 static uint16_t dragLastRunNoV37=0;          // nomor RUN untuk layar FINISH ("RUN 3")
 static float dragPostDistV37=0,dragPostPrevSpV37=0,dragFinishDistV37=0; static uint32_t dragPostPrevTowV37=0;   // jarak LIVE setelah finish
+static bool dragFreezeMovePendV40=false; static uint32_t dragFreezeMoveTowV40=0; static float dragFreezeMoveSpV40=0;
 static bool dragFreezeStillV37=false; static uint32_t dragFreezeSeqV37=0,dragFreezeStillTowV37=0; static float dragFreezeStillSpV37=0;
 static bool dragAbortedV36=false;
 // V36.2: completed=false dipakai saat user menekan BACK di tengah run. Dulu abort ikut disimpan
@@ -10748,6 +10753,13 @@ static void serviceDragV31(){
   {
     const uint32_t dt=gpsTowDeltaMsV30(tow,dragRtV31.prevTow);
     if(dt>0&&dt<500UL)dragRtV31.rawDistanceM+=(dragRtV31.prevSpeedKmh+sp)*0.5f/3.6f*(dt*0.001f);
+    else if(dt>=500UL&&dragRtV31.timingStarted){
+      // V36.8: data GPS terputus >= 0,5 s di tengah run -> jarak tidak bisa dipercaya. Run dibatalkan
+      // (tidak disimpan) dan alat menunggu kendaraan diam dulu sebelum siap start lagi.
+      Serial.printf("DRAG BATAL: data GPS terputus %lu ms\n",(unsigned long)dt);
+      resetDragRuntimeV31();dragRtV31.lastSeq=gpsPvtSequenceV30;
+      buzzerPlayV31(700,250);screenDirtyV31=true;return;
+    }
   }
 
   if(!dragRtV31.timingStarted){
@@ -10798,11 +10810,11 @@ static void serviceDragV31(){
     if(sp<=1.0f){
       if(!dragRunStopV37){dragRunStopV37=true;dragRunStopTowV37=tow;}
       const uint32_t st=gpsTowDeltaMsV30(tow,dragRunStopTowV37);
-      if(dragRtV31.reached==0&&st>=500UL){
+      if(dragRtV31.reached==0&&st>=DRAG_STOP_DISCARD_MS_V40){
         Serial.println("DRAG STOP sebelum checkpoint 1 -> tidak disimpan");
         dragRearmStillV37(tow,sp);return;
       }
-      if(dragRtV31.reached>=1&&st>=2300UL){dragSavePartialV37();dragRearmStillV37(tow,sp);return;}
+      if(dragRtV31.reached>=1&&st>=DRAG_STOP_SAVE_MS_V40){dragSavePartialV37();dragRearmStillV37(tow,sp);return;}
     }else dragRunStopV37=false;
   }
   dragRtV31.prevTow=tow;dragRtV31.prevLat=gpsLatitudeV30;dragRtV31.prevLon=gpsLongitudeV30;dragRtV31.prevPosValid=true;dragRtV31.prevSpeedKmh=sp;
@@ -10818,6 +10830,10 @@ static int16_t trackPathXV36[TRACK_PATH_MAX_V36],trackPathYV36[TRACK_PATH_MAX_V3
 static uint16_t trackPathCountV36=0;
 static float trackPathMinStepV36=8.0f;
 static uint32_t circuitPrevTowV36=0; static float circuitPrevSpV36=0; static bool circuitHavePrevTowV36=false;
+// V36.8: garis start TERSIMPAN -> lintasan pertama hanya MEMULAI lap 1 (dulu waktu dari tekan START
+// sampai garis ikut dihitung sebagai "lap 1" dan bisa jadi BEST palsu). circuitSavedCheckV40 = posisi
+// awal belum dicek terhadap garis tersimpan.
+static bool circuitFirstCrossV40=false,circuitSavedCheckV40=false;
 static void trackPathAddV36(float east,float north){
   if(trackPathCountV36){
     const float dx=east-trackPathXV36[trackPathCountV36-1],dy=north-trackPathYV36[trackPathCountV36-1];
@@ -10832,7 +10848,7 @@ static void trackPathAddV36(float east,float north){
   trackPathCountV36++;
 }
 static void circuitResetV31(bool clearLine=true){double slat=circuitRtV31.startLat,slon=circuitRtV31.startLon;float sh=circuitRtV31.startHeadingDeg,learn=circuitRtV31.learnedLapDistanceM;bool had=circuitRtV31.lineSet&&!clearLine;memset(&circuitRtV31,0,sizeof(circuitRtV31));circuitRtV31.bestLapMs=0xFFFFFFFFUL;circuitRtV31.active=true;circLogBeginV38();circuitRtV31.lastSeq=gpsPvtSequenceV30;if(had){circuitRtV31.lineSet=true;circuitRtV31.startLat=slat;circuitRtV31.startLon=slon;circuitRtV31.startHeadingDeg=sh;circuitRtV31.learnedLapDistanceM=learn;circuitRtV31.lapStartTow=gpsITowMsV30;}
-  trackPathCountV36=0;trackPathMinStepV36=8.0f;circuitHavePrevTowV36=false;circuitPrevSpV36=0;resetTelemetryV31();}
+  trackPathCountV36=0;trackPathMinStepV36=8.0f;circuitHavePrevTowV36=false;circuitPrevSpV36=0;circuitFirstCrossV40=false;circuitSavedCheckV40=false;resetTelemetryV31();}
 static void saveTrackV31(){
   if(!circuitRtV31.lineSet)return; prefsV31.putBool("trk",true);
   prefsV31.putBytes("tlat",&circuitRtV31.startLat,sizeof(circuitRtV31.startLat));
@@ -10863,7 +10879,17 @@ static void serviceCircuitV31(){
   if(circuitHavePrevTowV36){const uint32_t dt=gpsTowDeltaMsV30(tow,circuitPrevTowV36);if(dt>0&&dt<500UL)circuitRtV31.lapDistanceM+=(circuitPrevSpV36+sp)*0.5f/3.6f*(dt*0.001f);}
   else{circuitPrevTowV36=tow;circuitPrevSpV36=sp;circuitHavePrevTowV36=true;}
   if(!circuitManualSectorV36&&circuitRtV31.learnedLapDistanceM>50&&circuitRtV31.sectorIndex<2){float target=circuitRtV31.learnedLapDistanceM*(circuitRtV31.sectorIndex==0?0.333333f:0.666667f);if(circuitRtV31.lapDistanceM>=target){circuitRtV31.sectorMs[circuitRtV31.sectorIndex]=gpsTowDeltaMsV30(tow,circuitRtV31.lapStartTow);circuitRtV31.sectorIndex++;if(circuitSectorPopupV31){circuitRtV31.popupType=1;circuitRtV31.popupUntil=millis()+1200;screenDirtyV31=true;}if(circuitBeepV31)buzzerPlayV31(1900,90);}}
-  const double DEG=0.017453292519943295,R=6371000.0;double lat0=circuitRtV31.startLat*DEG,north=(gpsLatitudeV30-circuitRtV31.startLat)*DEG*R,east=(gpsLongitudeV30-circuitRtV31.startLon)*DEG*cos(lat0)*R,h=circuitRtV31.startHeadingDeg*DEG;float along=(float)(east*sin(h)+north*cos(h)),lat=(float)(east*cos(h)-north*sin(h));if(sqrtf(along*along+lat*lat)>30)circuitRtV31.seenFar=true;
+  const double DEG=0.017453292519943295,R=6371000.0;double lat0=circuitRtV31.startLat*DEG,north=(gpsLatitudeV30-circuitRtV31.startLat)*DEG*R,east=(gpsLongitudeV30-circuitRtV31.startLon)*DEG*cos(lat0)*R,h=circuitRtV31.startHeadingDeg*DEG;float along=(float)(east*sin(h)+north*cos(h)),lat=(float)(east*cos(h)-north*sin(h));
+  if(circuitSavedCheckV40){
+    circuitSavedCheckV40=false;const float d0=sqrtf(along*along+lat*lat);
+    if(d0>2000.0f&&circuitTrackModeV31==0){
+      // AUTO: garis tersimpan > 2 km dari sini = sirkuit lain -> buat garis baru di sini
+      Serial.printf("CIRCUIT: garis tersimpan %.0f m dari posisi ini, dibuat garis baru\n",d0);
+      circuitRtV31.lineSet=false;circuitRtV31.learnedLapDistanceM=0;circuitRtV31.lapDistanceM=0;circuitFirstCrossV40=false;circuitHavePrevTowV36=false;circuitRtV31.havePrevAlong=false;return;
+    }
+    if(d0<=15.0f){circuitFirstCrossV40=false;circuitRtV31.lapStartTow=tow;circuitRtV31.lapDistanceM=0;}   // start tepat di garis: lap 1 dari sini
+  }
+  if(sqrtf(along*along+lat*lat)>30)circuitRtV31.seenFar=true;
   if(sp>3.0f)trackPathAddV36((float)east,(float)north);
   // Deteksi perubahan TANDA (belakang garis -> depan garis); anti-jitter: seenFar, koridor |lat|<=20 m, jeda >=10 s.
   bool crossed=circuitAutoLapV31&&circuitRtV31.seenFar&&circuitRtV31.havePrevAlong&&circuitRtV31.prevAlongM<0.0f&&along>=0&&fabsf(lat)<=20;
@@ -10872,7 +10898,12 @@ static void serviceCircuitV31(){
     const float r=den>0.0001f?(-circuitRtV31.prevAlongM)/den:1.0f;
     const uint32_t crossTow=gpsTowInterpolateV30(circuitPrevTowV36,tow,r);
     const uint32_t elapsed=gpsTowDeltaMsV30(crossTow,circuitRtV31.lapStartTow);
-    if(elapsed>=10000UL){
+    if(circuitFirstCrossV40){
+      circuitFirstCrossV40=false;
+      circuitRtV31.lapStartTow=crossTow;circuitRtV31.lapDistanceM=0;circuitRtV31.sectorIndex=0;circuitRtV31.seenFar=false;screenDirtyV31=true;
+      if(circuitBeepV31)buzzerPlayV31(2300,90);
+      Serial.println("CIRCUIT: lewat garis start, lap 1 mulai");
+    }else if(elapsed>=10000UL){
       circuitRtV31.lapCount++;circuitRtV31.lastLapMs=elapsed;if(elapsed<circuitRtV31.bestLapMs)circuitRtV31.bestLapMs=elapsed;
       circLogLapV38(circuitRtV31.lapCount,elapsed,circuitRtV31.sectorMs,circuitRtV31.sectorIndex);   // V36.6 riwayat lap
       if(circuitRtV31.learnedLapDistanceM<=0)circuitRtV31.learnedLapDistanceM=circuitRtV31.lapDistanceM;saveTrackV31();
@@ -11403,7 +11434,7 @@ static void drawDragRunningV31(){
     drawTextCenteredV31(154,95,sp,C_V31_WHITE,5);
     drawTextV31(154+bw/2+6,118,"M",C_V31_WHITE,1);
   }else{
-    snprintf(sp,sizeof(sp),"%.0f",spdDispV36(gpsSpeedKmhV30));
+    snprintf(sp,sizeof(sp),"%.0f",spdDispV36(gpsSpeedKmhV30<1.0f?0.0f:gpsSpeedKmhV30));   // V36.8: diam = 0
     const int16_t bw=textWidthV31(sp,5);
     drawTextCenteredV31(154,95,sp,C_V31_WHITE,5);
     drawTextV31(154+bw/2+6,118,spdUnitV36(),C_V31_WHITE,1);
@@ -11419,7 +11450,7 @@ static void drawDragRunningV31(){
 
   float d=dLive;
   // kiri bawah = nilai yang tidak tampil besar/atas
-  if(dragDisplayModeV39==1){snprintf(dist,sizeof(dist),"%.0f %s",spdDispV36(gpsSpeedKmhV30),spdUnitV36());drawTextV31(20,151,"SPEED",C_V31_GRAY,1);}
+  if(dragDisplayModeV39==1){snprintf(dist,sizeof(dist),"%.0f %s",spdDispV36(gpsSpeedKmhV30<1.0f?0.0f:gpsSpeedKmhV30),spdUnitV36());drawTextV31(20,151,"SPEED",C_V31_GRAY,1);}
   else if(dragDisplayModeV39==2){snprintf(dist,sizeof(dist),"%s S",tm);drawTextV31(20,151,"TIME",C_V31_GRAY,1);}
   else{snprintf(dist,sizeof(dist),"%.1f m",d);drawTextV31(20,151,"DIST",C_V31_GRAY,1);}
   drawTextV31(20,166,dist,C_V31_WHITE,1);
@@ -12513,19 +12544,28 @@ static void dragArmFromFinishV37(){
   uiTestScreen=UI_DRAG_RUNNING;screenDirtyV31=true;
 }
 static void serviceDragFinishFreezeV36(){
-  if(uiTestScreen!=UI_DRAG_FINISH){dragFreezeStillV37=false;return;}
+  if(uiTestScreen!=UI_DRAG_FINISH){dragFreezeStillV37=false;dragFreezeMovePendV40=false;return;}
   if(dragFreezeSeqV37!=gpsPvtSequenceV30&&gpsLastPvtMillisV30!=0&&millis()-gpsLastPvtMillisV30<1000UL&&gpsFixRawV30&&gpsFixTypeV30>=2){
     dragFreezeSeqV37=gpsPvtSequenceV30;
     const float sp=gpsSpeedKmhV30<0.5f?0.0f:gpsSpeedKmhV30;
     {const uint32_t dt=gpsTowDeltaMsV30(gpsITowMsV30,dragPostPrevTowV37);if(dt>0&&dt<500UL)dragPostDistV37+=(dragPostPrevSpV37+sp)*0.5f/3.6f*(dt*0.001f);dragPostPrevTowV37=gpsITowMsV30;dragPostPrevSpV37=sp;screenDirtyV31=true;}
-    if(sp<1.0f){dragFreezeStillV37=true;dragFreezeStillTowV37=gpsITowMsV30;dragFreezeStillSpV37=sp;}
+    // V36.8: gerak harus terlihat di 2 sampel berurutan (1 sampel > 1 km/h saat diam = derau GPS;
+    // dulu itu sudah cukup untuk menutup layar hasil). Kedua sampel diproses ulang berurutan, jadi
+    // waktu start tetap diinterpolasi dari sampel diam terakhir -- tidak ada waktu yang hilang.
+    if(sp<1.0f){dragFreezeStillV37=true;dragFreezeStillTowV37=gpsITowMsV30;dragFreezeStillSpV37=sp;dragFreezeMovePendV40=false;}
     else if(dragFreezeStillV37){
-      resetDragRuntimeV31();dragFreezeStillV37=false;
-      dragRtV31.prevTow=dragFreezeStillTowV37;dragRtV31.prevSpeedKmh=dragFreezeStillSpV37;dragRtV31.prevPosValid=true;
-      uiTestScreen=UI_DRAG_RUNNING;screenDirtyV31=true;
-      if(soundCountdownV31)buzzerPlayV31(2100,80);
-      serviceDragV31();   // sampel gerak ini langsung diproses -> waktu start tetap diinterpolasi
-      return;
+      if(!dragFreezeMovePendV40){dragFreezeMovePendV40=true;dragFreezeMoveTowV40=gpsITowMsV30;dragFreezeMoveSpV40=gpsSpeedKmhV30;}
+      else if(sp>=dragFreezeMoveSpV40||sp>=2.0f){
+        resetDragRuntimeV31();dragFreezeStillV37=false;dragFreezeMovePendV40=false;
+        dragRtV31.prevTow=dragFreezeStillTowV37;dragRtV31.prevSpeedKmh=dragFreezeStillSpV37;dragRtV31.prevPosValid=true;
+        uiTestScreen=UI_DRAG_RUNNING;screenDirtyV31=true;
+        if(soundCountdownV31)buzzerPlayV31(2100,80);
+        const uint32_t curTow=gpsITowMsV30;const float curSp=gpsSpeedKmhV30;
+        gpsITowMsV30=dragFreezeMoveTowV40;gpsSpeedKmhV30=dragFreezeMoveSpV40;dragRtV31.lastSeq=gpsPvtSequenceV30-1;serviceDragV31();
+        gpsITowMsV30=curTow;gpsSpeedKmhV30=curSp;
+        if(uiTestScreen==UI_DRAG_RUNNING){dragRtV31.lastSeq=gpsPvtSequenceV30-1;serviceDragV31();}
+        return;
+      }else dragFreezeMovePendV40=false;   // turun lagi = derau
     }
   }
   if(dragFreezeModeV36>1)return;
@@ -12877,7 +12917,7 @@ if(uiTestScreen==UI_CIRCUIT_STANDBY){
         bool saved=prefsV31.getBool("trk",false);
         bool useLast=(circuitTrackModeV31==1)||(circuitTrackModeV31==0&&saved);
         circuitResetV31(true);
-        if(useLast)loadTrackV31();
+        if(useLast&&loadTrackV31()){circuitFirstCrossV40=true;circuitSavedCheckV40=true;}
         uiTestScreen=UI_CIRCUIT_RUNNING;
         screenDirtyV31=true;
       }
