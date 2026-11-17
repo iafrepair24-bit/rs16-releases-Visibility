@@ -11183,7 +11183,7 @@ static void drawDragSetupV38(){
   fillScreen(C_V31_BG);drawTopBarV31();
   static const char* const TN[4]={"DISTANCE","SPEED","1/4 MILE","1/8 MILE"};
   drawTextV31(14,38,TN[dragTypeV39&3],C_V31_GRAY,1);
-  drawTextRightV31(306,38,dragSetupEditV38?"EDIT":(gpsTimingReadyV31()?"GPS READY":"WAIT GPS"),dragSetupEditV38?C_V31_BLUE:(gpsTimingReadyV31()?C_V31_GREEN:C_V31_GRAY),1);
+  if(dragSetupEditV38)drawTextRightV31(306,38,"EDIT",C_V31_BLUE,1);   // V36.8: tulisan GPS READY dihapus (sudah ada bar sinyal)
   static const char* const lab[11]={"SESSION NO.","PRIMARY TEST","RANGE 1","RANGE 2","RANGE 3","RANGE 4","COMPARE","DISPLAY SETTING","ROLLOUT","LAP TIME FREEZE","START"};
   const uint8_t rows=dragSetupRowsV39();
   if(dragSetupSelV38>=rows)dragSetupSelV38=rows-1;
@@ -11299,8 +11299,6 @@ static void drawSelectedDragPage1V31(){
   const uint8_t t=dragTypeV39&3,L=(uint8_t)((t+3)&3),R=(uint8_t)((t+1)&3);
   drawTextV31(14,38,"DRAG",C_V31_WHITE,2);
   {const float p[8]={14,56,58,56,55,59,11,59};fillPolyV40(p,4,C_V31_BLUE);}
-  {const bool rdy=gpsTimingReadyV31();const char* gs=rdy?"GPS READY":"WAIT GPS";const uint16_t gc=rdy?C_V31_GREEN:C_V31_GRAY;
-   drawTextRightV31(306,41,gs,gc,1);drawRingV36(306-textWidthV31(gs,1)-8,45,3,0,gc);}
   // mode kiri & kanan (redup)
   drawDragIconV40(L,40,112,0.62f,SD1,SD2,RGB_V40(40,50,76),RGB_V40(56,70,104));drawTextCenteredV31(40,134,TN[L],SDT,1);
   drawDragIconV40(R,280,112,0.62f,SD1,SD2,RGB_V40(40,50,76),RGB_V40(56,70,104));drawTextCenteredV31(280,134,TN[R],SDT,1);
@@ -11328,10 +11326,10 @@ static void drawSelectedDragPage2V31(){uiTestScreen=UI_DRAG_PAGE1;drawSelectedDr
 
 static const char* gpsDragQualityTextV34(){
   if(!gpsTimingReadyV31())return gpsTimingReasonTextV33();
-  if(gpsHorizontalAccuracyM_V30>8.0f)return "READY / HACC";
-  if(gpsSpeedAccuracyKmhV30>2.5f)return "READY / SACC";
-  if(gpsHdopValidV30 && gpsHdopV30>2.5f)return "READY / HDOP";
-  return "GPS READY";
+  if(gpsHorizontalAccuracyM_V30>8.0f)return "HACC";
+  if(gpsSpeedAccuracyKmhV30>2.5f)return "SACC";
+  if(gpsHdopValidV30 && gpsHdopV30>2.5f)return "HDOP";
+  return "";   // V36.8: tulisan GPS READY dihapus (sudah ada bar sinyal)
 }
 
 static void drawDragStandbyV31(){
@@ -12228,7 +12226,7 @@ static void drawCircuitSetupMenuV31(){char a[5],b[5],c[5],d[5];boolTextV31(circu
 static void drawCircuitStandbyV31(){
   fillScreen(C_V31_BG);drawTopBarV31();
   drawTextV31(14,41,"CIRCUIT READY",C_V31_WHITE,2);
-  drawTextRightV31(302,42,gpsTimingReadyV31()?"GPS 3D":"WAIT GPS",gpsTimingReadyV31()?C_V31_GREEN:C_V31_BLUE,1);
+  
   drawHLineV31(14,58,292,C_V31_BLUE);
 
   char sp[16];snprintf(sp,sizeof(sp),"%.0f",spdDispV36(gpsSpeedKmhV30));
@@ -12315,7 +12313,7 @@ static void drawGpsLoggerMenuV31(){
   int y=66;for(uint8_t i=0;i<4;i++,y+=36){if(gpsLoggerSelection==i)drawRoundSelectV36(18,y-2,284,33,10);drawTextV31(28,y+10,lab[i],C_V31_WHITE,1);drawTextRightV31(292,y+10,val[i],i==gpsLoggerSelection?C_V31_BLUE:C_V31_TEXT,1);}
 }
 static void drawLoggerStandbyV31(){
-  fillScreen(C_V31_BG);drawTopBarV31();drawTextV31(14,41,"GPS LOGGER",C_V31_WHITE,2);drawTextRightV31(302,42,gpsTimingReadyV31()?"GPS READY":"WAIT GPS",gpsTimingReadyV31()?C_V31_GREEN:C_V31_BLUE,1);drawHLineV31(14,58,292,C_V31_BLUE);
+  fillScreen(C_V31_BG);drawTopBarV31();drawTextV31(14,41,"GPS LOGGER",C_V31_WHITE,2);drawHLineV31(14,58,292,C_V31_BLUE);
   char sp[16];snprintf(sp,sizeof(sp),"%.0f",spdDispV36(gpsSpeedKmhV30));drawTextCenteredV31(128,68,sp,C_V31_WHITE,4);drawTextCenteredV31(128,101,spdUnitV36(),C_V31_GRAY,1);
   const int16_t x[3]={14,92,170};for(uint8_t i=0;i<3;i++)drawPanelV31(x[i],99,72,37,false);
   drawTextCenteredV31(50,107,"SAT",C_V31_GRAY,1);drawTextCenteredV31(128,107,"HDOP",C_V31_GRAY,1);drawTextCenteredV31(206,107,"RATE",C_V31_GRAY,1);
