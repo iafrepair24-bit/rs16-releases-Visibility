@@ -508,9 +508,17 @@ static uint8_t gnssUpdateRateIdxV36 = 1;   // V36.8: 0 = 0,06 s (16,7 Hz), 1 = 0
 static uint8_t gnssSystemIdxV36 = 0;       // lihat GNSS_SYSTEM_NAME_V36 -- bawaan GPS + GLONASS (12 Nov 2026)
 static void applyGnssSystemV36();          // forward decl -- dipakai di configureMg90225HzV30()
 
-static inline uint16_t gnssMeasMsV40(){ return gnssUpdateRateIdxV36 == 0 ? 60 : 40; }
+// V36.8 RATE OTOMATIS sesuai GNSS SYSTEM (seperti modul u-blox M10: makin banyak sistem satelit, makin
+// lambat rate maksimalnya). 2 sistem (GPS + 1 lainnya, QZSS tidak dihitung) = 0,04 s (25 Hz),
+// ALL SYSTEM = 0,06 s (16,7 Hz). Kalau di 0,04 s modul ternyata tidak sanggup (rate terukur < 21,5 Hz
+// selama 6 s saat fix), otomatis turun ke 0,06 s. Pilihan manual di menu dihapus.
+static uint16_t gnssMeasAutoV40 = 40;
+static bool gnssRateFellBackV40 = false;
+static inline uint16_t gnssMeasMsV40(){ return gnssMeasAutoV40; }
+static inline bool gnssSlowV40(){ return gnssMeasAutoV40 >= 60; }
 static inline float gnssRateHzV36(){ return 1000.0f / (float)gnssMeasMsV40(); }
-static const char* gnssRateTextV40(){ return gnssUpdateRateIdxV36 == 0 ? "16.7 HZ" : "25 HZ"; }
+static const char* gnssRateTextV40(){ return gnssSlowV40() ? "0.06 S" : "0.04 S"; }
+static void gnssPickRateV40(){ gnssMeasAutoV40 = (gnssSystemIdxV36 >= 4) ? 60 : 40; gnssRateFellBackV40 = false; }
 
 // V36.2: rate + pesan UBX saja (TANPA CFG-GNSS). Dipakai juga oleh recovery stream --
 // dulu recovery ikut mengirim CFG-GNSS, padahal mengubah konfigurasi konstelasi bisa memicu
@@ -523,8 +531,8 @@ static void configureGnssRateMsgsV36() {
   delay(40);
 
   setUbxMessageRateV30(0x01, 0x07, 1); // UBX-NAV-PVT tiap solusi = rate penuh
-  setUbxMessageRateV30(0x01, 0x04, (gnssUpdateRateIdxV36 == 0) ? 3 : 5);   // UBX-NAV-DOP ~5 Hz
-  setUbxMessageRateV30(0x01, 0x35, (gnssUpdateRateIdxV36 == 0) ? 8 : 12);  // UBX-NAV-SAT ~2 Hz (layar sinyal lebih responsif)
+  setUbxMessageRateV30(0x01, 0x04, gnssSlowV40() ? 3 : 5);   // UBX-NAV-DOP ~5 Hz
+  setUbxMessageRateV30(0x01, 0x35, gnssSlowV40() ? 8 : 12);  // UBX-NAV-SAT ~2 Hz (layar sinyal lebih responsif)
 
   // Disable standard NMEA sentences on UART1. UBX stream stays deterministic.
   static const uint8_t nmeaIds[] = {0x00,0x01,0x02,0x03,0x04,0x05};
@@ -539,8 +547,8 @@ static void configureGnssRateMsgsV36() {
       0x01,0x00,0x21,0x30, (uint8_t)(meas&0xFF),(uint8_t)(meas>>8),// CFG-RATE-MEAS (ms)
       0x02,0x00,0x21,0x30, 0x01,0x00,                              // CFG-RATE-NAV = 1
       0x07,0x00,0x91,0x20, 0x01,                                   // CFG-MSGOUT-UBX_NAV_PVT_UART1 = 1
-      0x39,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?3:5), // CFG-MSGOUT-UBX_NAV_DOP_UART1
-      0x16,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?8:12),// CFG-MSGOUT-UBX_NAV_SAT_UART1
+      0x39,0x00,0x91,0x20, (uint8_t)(gnssSlowV40()?3:5), // CFG-MSGOUT-UBX_NAV_DOP_UART1
+      0x16,0x00,0x91,0x20, (uint8_t)(gnssSlowV40()?8:12),// CFG-MSGOUT-UBX_NAV_SAT_UART1
       0x02,0x00,0x74,0x10, 0x00                                    // CFG-UART1OUTPROT-NMEA = 0
     };
     sendUbxV30(0x06,0x8A,pl,sizeof(pl));
@@ -551,6 +559,7 @@ static void configureGnssRateMsgsV36() {
 }
 
 static void configureMg90225HzV30() {
+  gnssPickRateV40();   // V36.8: rate otomatis dari GNSS SYSTEM
   configureGnssRateMsgsV36();
   // Konstelasi dikirim saat boot/deteksi ulang saja, supaya pilihan GNSS SYSTEM user berlaku.
   applyGnssSystemV36();
@@ -12830,7 +12839,7 @@ static void handleButtonsV31(){
       if(gnssMenuSelection==0){uiTestScreen=UI_GPS_SATELLITE;gpsSatelliteLastUiV35=0;gpsSatelliteLastSeqV35=0;}
       else if(gnssMenuSelection==1){uiTestScreen=UI_GNSS_COLDSTART;gnssColdStartMsV36=0;}
       else if(gnssMenuSelection==2){uiTestScreen=UI_GNSS_SYSTEM;gnssOptionSelection=gnssSystemIdxV36;}
-      else{uiTestScreen=UI_GNSS_RATE;gnssOptionSelection=gnssUpdateRateIdxV36;}
+      else{return;}   // V36.8: UPDATE RATE otomatis mengikuti GNSS SYSTEM (hanya info)
       screenDirtyV31=true;
     }
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}
@@ -12839,7 +12848,7 @@ static void handleButtonsV31(){
   if(uiTestScreen==UI_GNSS_SYSTEM){
     if(up&BUTTON_EVENT_SHORT){gnssOptionSelection=gnssOptionSelection?gnssOptionSelection-1:4;screenDirtyV31=true;}
     if(down&BUTTON_EVENT_SHORT){gnssOptionSelection=(gnssOptionSelection+1)%5;screenDirtyV31=true;}
-    if(ok&BUTTON_EVENT_SHORT){gnssSystemIdxV36=gnssOptionSelection;applyGnssSystemV36();saveSettingsV31();uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
+    if(ok&BUTTON_EVENT_SHORT){gnssSystemIdxV36=gnssOptionSelection;gnssPickRateV40();applyGnssSystemV36();applyGnssUpdateRateV36();saveSettingsV31();uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
     return;
   }
@@ -13063,8 +13072,7 @@ if(uiTestScreen==UI_GPS_LOGGER_MENU){
         screenDirtyV31=true;
       }else if(gpsLoggerSelection==1){
         // V36.2: OK di LOG RATE = ganti 10 <-> 25 Hz (dulu cuma kirim ulang config)
-        gnssUpdateRateIdxV36=gnssUpdateRateIdxV36?0:1;applyGnssUpdateRateV36();saveSettingsV31();
-        screenDirtyV31=true;
+        // V36.8: rate otomatis mengikuti GNSS SYSTEM (hanya info)
       }else if(gpsLoggerSelection==2){
         loggerAutoStartV31=!loggerAutoStartV31;
         saveSettingsV31();
@@ -13429,6 +13437,18 @@ void setup(){
   Serial.println("RS16 V36 READY - ALL MENU ACTIONS / LIVE DATA / STABLE GNSS");Serial.printf("GNSS MG-902 UBX 25Hz, IMU %s 200Hz, RAW SPI ILI9341\n",imuChipNameV36());Serial.println(RS16_SD_ENABLED?"MICROSD COMPILE ENABLED":"MICROSD SLOT EXISTS; SET SD GPIO MAP TO ENABLE WRITES");
 }
 
+// V36.8: modul tidak sanggup 0,04 s untuk sistem satelit yang dipilih -> turun otomatis ke 0,06 s
+static void serviceGnssRateAutoV40(){
+  static uint32_t lowSince=0;
+  if(gnssSlowV40()||gnssRateFellBackV40||activeMeasurementV31()){lowSince=0;return;}
+  const bool fixOk=gpsFixTypeV30>=3&&gpsLastPvtMillisV30&&millis()-gpsLastPvtMillisV30<500UL;
+  if(!fixOk||gpsActualRateHzV30<=0.5f||gpsActualRateHzV30>=21.5f){lowSince=0;return;}
+  if(!lowSince){lowSince=millis();return;}
+  if(millis()-lowSince<6000UL)return;
+  gnssMeasAutoV40=60;gnssRateFellBackV40=true;lowSince=0;
+  Serial.printf("GNSS: rate terukur %.1f Hz < 25 Hz untuk %s -> otomatis 0,06 s\n",gpsActualRateHzV30,GNSS_SYSTEM_NAME_V36[gnssSystemIdxV36<5?gnssSystemIdxV36:4]);
+  configureGnssRateMsgsV36();screenDirtyV31=true;
+}
 static void serviceGpsLedV40(){
   static int8_t last=-1;
   const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
@@ -13445,5 +13465,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGpsScanV40();serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }
