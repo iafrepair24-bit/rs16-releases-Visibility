@@ -10463,6 +10463,13 @@ static bool initImuV31(){
   uint8_t who=0;
   digitalWrite(ICM_CS_PIN,HIGH);digitalWrite(TFT_CS,HIGH);digitalWrite(FLASH_CS_PIN,HIGH);digitalWrite(RS16_SD_CS_PIN,HIGH);
   delay(20);   // waktu boot LSM6 (maks ~10-35 ms setelah daya)
+  // V36.8: kartu microSD memakai jalur MISO yang sama (PCB V2: J_SD1 pin 7). Kartu yang belum
+  // diinisialisasi bisa menahan MISO -> jawaban IMU tertimpa. 80+ clock dengan semua CS HIGH
+  // (urutan awal standar kartu SD) membuat kartu melepas MISO sebelum IMU dicek.
+  lcdSPI.beginTransaction(SPISettings(400000,MSBFIRST,SPI_MODE0));
+  for(uint8_t i=0;i<12;i++)lcdSPI.transfer(0xFF);
+  lcdSPI.endTransaction();
+  delayMicroseconds(100);
   {
     static const uint8_t modes[2]={SPI_MODE3,SPI_MODE0};
     bool hit=false;
@@ -13681,6 +13688,16 @@ static void serviceGnssRateAutoV40(){
   Serial.printf("GNSS: rate terukur %.1f Hz < 25 Hz untuk %s -> otomatis 0,06 s\n",gpsActualRateHzV30,GNSS_SYSTEM_NAME_V36[gnssSystemIdxV36<5?gnssSystemIdxV36:4]);
   configureGnssRateMsgsV36();screenDirtyV31=true;
 }
+// V36.8: IMU belum terdeteksi -> dicoba lagi tiap 5 s (tidak saat drag/circuit/logger berjalan),
+// supaya IMU yang telat siap atau kontaknya baru tersambung tetap terdeteksi tanpa restart.
+static void serviceImuRetryV40(){
+  static uint32_t last=0;static uint8_t tries=0;
+  if(imuConnectedV31||tries>=24||activeMeasurementV31())return;
+  if(millis()-last<5000UL)return;last=millis();tries++;
+  const bool ok=initImuV31();
+  Serial.printf("IMU coba ulang %u: %s  (WHO ICM=0x%02X LSM=0x%02X)\n",(unsigned)tries,ok?imuChipNameV36():"TIDAK TERDETEKSI",imuDiagIcmV37[0],imuDiagLsmV37[0]);
+  if(ok)screenDirtyV31=true;
+}
 static void serviceGpsLedV40(){
   static int8_t last=-1;
   const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
@@ -13697,5 +13714,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }
