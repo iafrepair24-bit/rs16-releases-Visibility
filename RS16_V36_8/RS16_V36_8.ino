@@ -5818,8 +5818,14 @@ static uint8_t selectedMenu = 0;
 // Tombol yang sudah ditekan saat boot (POWER untuk menyalakan IP5306) diabaikan sampai dilepas.
 // PCB V2: 6 tombol lewat PCF8574A (BUTTON_PINS = bit P0-P7). Index 5 = POWER (bit P0, logika terbalik).
 static const uint8_t BUTTON_COUNT = 6;
+// V36.8 SUSUNAN TOMBOL sesuai posisi fisik di PCB V2 (dilihat dari depan, LED di kanan atas):
+//   KIRI : atas SW7 (P3) = START | tengah SW9 (P5) = UP    | bawah SW8 (P4) = DOWN
+//   KANAN: atas SW4 (P0) = POWER | tengah SW5 (P1) = RIGHT (masuk) | bawah SW6 (P2) = LEFT (kembali)
+// Nama net di PCB (BTN_UP, BTN_LEFT, ...) tidak lagi sama dengan fungsinya -- yang dipakai posisi.
+// index: 0 UP, 1 DOWN, 2 START, 3 LEFT/kembali, 4 RIGHT/masuk, 5 POWER
 static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
-  BTN_UP, BTN_DOWN, BTN_OK, BTN_BACK, BTN_RIGHT, PCF_BIT_POWER
+  BTN_BACK /*P5 kiri tengah*/, BTN_RIGHT /*P4 kiri bawah*/, BTN_OK /*P3 kiri atas*/,
+  BTN_DOWN /*P2 kanan bawah*/, BTN_UP /*P1 kanan tengah*/, PCF_BIT_POWER /*P0 kanan atas*/
 };
 // Baca 1 byte penuh dari PCF8574 (P0-P7 sekaligus). Gagal baca (I2C error) dianggap
 // "semua tombol tidak ditekan" (0xFF) supaya aman -- tidak ada tombol nyangkut ke-trigger terus.
@@ -13575,7 +13581,7 @@ static void lcdSelfTestV36(uint32_t mhz){
   screenDirtyV31=true;
   Serial.println("LCD TEST selesai. Warna tampil = LCD & sambungan OK.");
 }
-static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="gps"){const bool ok=detectAndConfigureGpsV32();Serial.printf("GPS %s  UART RX=GPIO%d TX=GPIO%d baud=%lu  byte diterima=%lu  (bytes 0 = modul GPS tidak mengirim: cek daya 5V & kabel)\n",ok?"TERDETEKSI":"TIDAK ADA DATA",gpsRxPinV37,gpsTxPinV37,(unsigned long)gpsActiveBaudV32,(unsigned long)gpsBytesRxV30);}else if(cmd=="imu"){imuConnectedV31=false;initImuV31();Serial.printf("IMU %s %s mode%u  WHO mode3 ICM=0x%02X LSM=0x%02X mode0 ICM=0x%02X LSM=0x%02X  (00/FF = chip tidak menjawab)\n",imuChipNameV36(),imuConnectedV31?"OK":"TIDAK ADA",imuSpiModeV37==SPI_MODE3?3:0,imuDiagIcmV37[0],imuDiagLsmV37[0],imuDiagIcmV37[1],imuDiagLsmV37[1]);}else if(cmd=="i2c"){Serial.print("I2C:");uint8_t n=0;for(uint8_t a=1;a<127;a++){Wire.beginTransmission(a);if(Wire.endTransmission()==0){Serial.printf(" 0x%02X",a);n++;}}Serial.printf("  (%u perangkat; PCF tombol=0x%02X, IMU MPU 0x68/69, LSM 0x6A/6B, GPS 0x42)\n",n,pcfAddrV36);}else if(cmd.startsWith("lcd"))lcdSelfTestV36(cmd.length()>4?(uint32_t)cmd.substring(4).toInt():0);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN PCF=0x%02X byte=0x%02X UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfAddrV36,(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
+static void serviceSerialCommandsV31(){static String cmd;while(Serial.available()){char c=Serial.read();if(c=='\n'||c=='\r'){cmd.trim();if(cmd=="status")Serial.printf("V32 GPS=%.1fHz SAT=%u USED=%u FIX=%u RX=%lu PVT=%lu ERR=%lu BAUD=%lu HACC=%.2f SACC=%.2f IMU=%s BAT=%.2f SD=%s\n",gpsActualRateHzV30,(unsigned)(gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32),(unsigned)gpsSatUsedV31,(unsigned)gpsFixTypeV30,(unsigned long)gpsBytesRxV30,(unsigned long)gpsPvtPacketsV30,(unsigned long)gpsChecksumErrorsV30,(unsigned long)gpsActiveBaudV32,gpsHorizontalAccuracyM_V30,gpsSpeedAccuracyKmhV30,imuConnectedV31?"OK":"NO",batteryVoltageV31,sdReadyV31?"OK":"NO");else if(cmd=="gnss 25hz")configureMg90225HzV30();else if(cmd=="imu zero")startImuCalV31(2);else if(cmd=="gps"){const bool ok=detectAndConfigureGpsV32();Serial.printf("GPS %s  UART RX=GPIO%d TX=GPIO%d baud=%lu  byte diterima=%lu  (bytes 0 = modul GPS tidak mengirim: cek daya 5V & kabel)\n",ok?"TERDETEKSI":"TIDAK ADA DATA",gpsRxPinV37,gpsTxPinV37,(unsigned long)gpsActiveBaudV32,(unsigned long)gpsBytesRxV30);}else if(cmd=="imu"){imuConnectedV31=false;initImuV31();Serial.printf("IMU %s %s mode%u  WHO mode3 ICM=0x%02X LSM=0x%02X mode0 ICM=0x%02X LSM=0x%02X  (00/FF = chip tidak menjawab)\n",imuChipNameV36(),imuConnectedV31?"OK":"TIDAK ADA",imuSpiModeV37==SPI_MODE3?3:0,imuDiagIcmV37[0],imuDiagLsmV37[0],imuDiagIcmV37[1],imuDiagLsmV37[1]);}else if(cmd=="i2c"){Serial.print("I2C:");uint8_t n=0;for(uint8_t a=1;a<127;a++){Wire.beginTransmission(a);if(Wire.endTransmission()==0){Serial.printf(" 0x%02X",a);n++;}}Serial.printf("  (%u perangkat; PCF tombol=0x%02X, IMU MPU 0x68/69, LSM 0x6A/6B, GPS 0x42)\n",n,pcfAddrV36);}else if(cmd.startsWith("lcd"))lcdSelfTestV36(cmd.length()>4?(uint32_t)cmd.substring(4).toInt():0);else if(cmd=="btn"){pcfRefreshV36();Serial.printf("BTN PCF=0x%02X byte=0x%02X UP=%u DOWN=%u START=%u LEFT=%u RIGHT=%u POWER=%u (0=ditekan) IMU=%s\n",(unsigned)pcfAddrV36,(unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5),imuChipNameV36());}else if(cmd=="wifi on")startWifiV31();else if(cmd=="wifi off")stopWifiV31();cmd="";}else if(cmd.length()<64)cmd+=c;}}
 
 // PENANDA BOOT (ditambahkan 6 Sep 2026) -- setiap langkah setup() mencetak satu baris ke Serial.
 // Tujuannya: kalau board macet/reset saat boot, baris terakhir yang muncul langsung menunjukkan
@@ -13626,7 +13632,7 @@ void setup(){
     // sampai dilepas -- kalau tidak, tahan >2 dtk langsung terbaca LONG = power off lagi.
     if(s==LOW)buttonLongSent[i]=true;
   }
-  Serial.printf("BOOT> 08 tombol dibaca, byte tombol = 0x%02X  (UP=%u DOWN=%u OK=%u BACK=%u RIGHT=%u POWER=%u, 0=ditekan)\n",
+  Serial.printf("BOOT> 08 tombol dibaca, byte tombol = 0x%02X  (UP=%u DOWN=%u START=%u LEFT=%u RIGHT=%u POWER=%u, 0=ditekan)\n",
                 (unsigned)pcfStateV36,buttonRawV36(0),buttonRawV36(1),buttonRawV36(2),buttonRawV36(3),buttonRawV36(4),buttonRawV36(5));
   Serial.flush();
   // FIX 6 Sep 2026: applyGnssUpdateRateV36()/applyGnssSystemV36() TIDAK dipanggil di sini lagi.
