@@ -12652,7 +12652,7 @@ static void drawLoggerStandbyV31(){
   char v[16];snprintf(v,sizeof(v),"%u",gpsSatellitesV30?gpsSatellitesV30:gpsSatViewCountV32);drawTextCenteredV31(50,123,v,C_V31_WHITE,1);
   if(gpsHdopValidV30)snprintf(v,sizeof(v),"%.1f",gpsHdopV30);else snprintf(v,sizeof(v),"--");drawTextCenteredV31(128,123,v,C_V31_WHITE,1);
   snprintf(v,sizeof(v),"%.0f Hz",gpsActualRateHzV30);drawTextCenteredV31(206,123,v,C_V31_WHITE,1);
-  drawTextV31(14,150,"WAITING TO RECORD",C_V31_BLUE,1);drawTextV31(14,169,"Press START or move",C_V31_WHITE,1);
+  drawTextV31(14,150,"WAITING TO RECORD",C_V31_BLUE,1);drawTextV31(14,169,"RIGHT ATAU JALAN = MULAI",C_V31_WHITE,1);
   drawTextRightV31(302,228,loggerAutoStartV31?"AUTO START ON":"AUTO START OFF",loggerAutoStartV31?C_V31_GREEN:C_V31_GRAY,1);
 }
 static void drawLoggerRecordingV31(){
