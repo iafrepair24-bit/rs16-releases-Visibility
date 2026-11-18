@@ -460,25 +460,27 @@ static bool detectAndConfigureGpsV32() {
 // Dulu configureMg90225HzV30() hardcode 25Hz dan SELALU menimpa balik setting user
 // tiap kali dipanggil (boot, recovery PVT, perintah serial) -> pilihan 10 Hz tidak
 // pernah bertahan setelah restart.
-static uint8_t gnssUpdateRateIdxV36 = 1;   // 0 = 10 Hz, 1 = 25 Hz
+static uint8_t gnssUpdateRateIdxV36 = 1;   // V36.8: 0 = 0,06 s (16,7 Hz), 1 = 0,04 s (25 Hz)
 static uint8_t gnssSystemIdxV36 = 0;       // lihat GNSS_SYSTEM_NAME_V36 -- bawaan GPS + GLONASS (12 Nov 2026)
 static void applyGnssSystemV36();          // forward decl -- dipakai di configureMg90225HzV30()
 
-static inline uint8_t gnssRateHzV36(){ return gnssUpdateRateIdxV36 == 0 ? 10 : 25; }
+static inline uint16_t gnssMeasMsV40(){ return gnssUpdateRateIdxV36 == 0 ? 60 : 40; }
+static inline float gnssRateHzV36(){ return 1000.0f / (float)gnssMeasMsV40(); }
+static const char* gnssRateTextV40(){ return gnssUpdateRateIdxV36 == 0 ? "16.7 HZ" : "25 HZ"; }
 
 // V36.2: rate + pesan UBX saja (TANPA CFG-GNSS). Dipakai juga oleh recovery stream --
 // dulu recovery ikut mengirim CFG-GNSS, padahal mengubah konfigurasi konstelasi bisa memicu
 // restart GNSS di modul (fix hilang lagi) tepat saat stream sedang bermasalah.
 static void configureGnssRateMsgsV36() {
   // UBX-CFG-RATE mengikuti pilihan user: 100 ms (10 Hz) atau 40 ms (25 Hz).
-  const uint16_t meas = (gnssUpdateRateIdxV36 == 0) ? 100 : 40;
+  const uint16_t meas = gnssMeasMsV40();   // V36.8: 60 ms atau 40 ms
   const uint8_t ratePayload[] = {(uint8_t)(meas & 0xFF), (uint8_t)(meas >> 8), 0x01, 0x00, 0x01, 0x00};
   sendUbxV30(0x06, 0x08, ratePayload, sizeof(ratePayload));
   delay(40);
 
   setUbxMessageRateV30(0x01, 0x07, 1); // UBX-NAV-PVT tiap solusi = rate penuh
-  setUbxMessageRateV30(0x01, 0x04, (gnssUpdateRateIdxV36 == 0) ? 2 : 5);   // UBX-NAV-DOP ~5 Hz
-  setUbxMessageRateV30(0x01, 0x35, (gnssUpdateRateIdxV36 == 0) ? 5 : 12);  // UBX-NAV-SAT ~2 Hz (layar sinyal lebih responsif)
+  setUbxMessageRateV30(0x01, 0x04, (gnssUpdateRateIdxV36 == 0) ? 3 : 5);   // UBX-NAV-DOP ~5 Hz
+  setUbxMessageRateV30(0x01, 0x35, (gnssUpdateRateIdxV36 == 0) ? 8 : 12);  // UBX-NAV-SAT ~2 Hz (layar sinyal lebih responsif)
 
   // Disable standard NMEA sentences on UART1. UBX stream stays deterministic.
   static const uint8_t nmeaIds[] = {0x00,0x01,0x02,0x03,0x04,0x05};
@@ -493,15 +495,15 @@ static void configureGnssRateMsgsV36() {
       0x01,0x00,0x21,0x30, (uint8_t)(meas&0xFF),(uint8_t)(meas>>8),// CFG-RATE-MEAS (ms)
       0x02,0x00,0x21,0x30, 0x01,0x00,                              // CFG-RATE-NAV = 1
       0x07,0x00,0x91,0x20, 0x01,                                   // CFG-MSGOUT-UBX_NAV_PVT_UART1 = 1
-      0x39,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?2:5), // CFG-MSGOUT-UBX_NAV_DOP_UART1
-      0x16,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?5:12),// CFG-MSGOUT-UBX_NAV_SAT_UART1
+      0x39,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?3:5), // CFG-MSGOUT-UBX_NAV_DOP_UART1
+      0x16,0x00,0x91,0x20, (uint8_t)((gnssUpdateRateIdxV36==0)?8:12),// CFG-MSGOUT-UBX_NAV_SAT_UART1
       0x02,0x00,0x74,0x10, 0x00                                    // CFG-UART1OUTPROT-NMEA = 0
     };
     sendUbxV30(0x06,0x8A,pl,sizeof(pl));
     delay(20);
   }
 
-  Serial.printf("GNSS: MG-902 115200, UBX-PVT %u Hz (%u ms), NMEA OFF\n", (unsigned)gnssRateHzV36(), (unsigned)meas);
+  Serial.printf("GNSS: MG-902 115200, UBX-PVT %s (%u ms), NMEA OFF\n", gnssRateTextV40(), (unsigned)meas);
 }
 
 static void configureMg90225HzV30() {
@@ -516,7 +518,7 @@ static const char* const GNSS_SYSTEM_NAME_V36[5] = {"GPS + GLONASS","GPS + GLONA
 
 static void applyGnssUpdateRateV36(){
   configureGnssRateMsgsV36();
-  Serial.printf("GNSS UPDATE RATE -> %u HZ\n",(unsigned)gnssRateHzV36());
+  Serial.printf("GNSS UPDATE RATE -> %s (%u ms)\n",gnssRateTextV40(),(unsigned)gnssMeasMsV40());
 }
 
 // UBX-CFG-GNSS: 7 blok konfigurasi konstelasi
@@ -11670,14 +11672,14 @@ static void drawGpsSatelliteV31(){
 
   if(pvtAlive && gpsFixTypeV30>=2){snprintf(v,sizeof(v),"%.5f %.5f",gpsLatitudeV30,gpsLongitudeV30);drawTextV31(14,226,v,C_V31_GRAY,1);}
   // V36.6: tulisan "UART 115200" dihapus
-  snprintf(v,sizeof(v),"%.1f/%u HZ",gpsActualRateHzV30,(unsigned)gnssRateHzV36());
+  snprintf(v,sizeof(v),"%.1f/%.1f HZ",gpsActualRateHzV30,gnssRateHzV36());
   drawTextRightV31(306,226,v,gpsActualRateHzV30>=gnssRateHzV36()*0.8f?C_V31_BLUE:C_V31_GRAY,1);
 }
 // ---------- V36.2 menu GNSS ala Qstarz ----------
 static void drawGnssMenuV36(){
   char st[16],rt[12];
   snprintf(st,sizeof(st),"%s",gpsReadyLatchedV35?"":(gpsFixTypeV30>=2?"2D FIX":"SEARCH"));   // V36.6 tanpa "3D FIX"
-  snprintf(rt,sizeof(rt),"%u HZ",(unsigned)gnssRateHzV36());
+  snprintf(rt,sizeof(rt),"%s",gnssRateTextV40());
   const char* lab[]={"GNSS STATUS","GNSS COLD START","GNSS SYSTEM","GNSS UPDATE RATE"};
   const char* val[]={st,"","",rt};
   drawListV36(lab,val,4,gnssMenuSelection,-1,nullptr);
@@ -11686,8 +11688,8 @@ static void drawGnssSystemV36(){
   drawListV36(GNSS_SYSTEM_NAME_V36,nullptr,5,gnssOptionSelection,(int8_t)gnssSystemIdxV36,"RIGHT = TERAPKAN   LEFT = BATAL");
 }
 static void drawGnssRateV36(){
-  const char* o[2]={"10 HZ","25 HZ"};
-  const char* t[2]={"0.10 S / DATA","0.04 S / DATA"};
+  const char* o[2]={"0.06 S","0.04 S"};
+  const char* t[2]={"16.7 HZ","25 HZ"};
   drawListV36(o,t,2,gnssOptionSelection,(int8_t)gnssUpdateRateIdxV36,"RIGHT = TERAPKAN   LEFT = BATAL");
 }
 static void drawGnssColdStartV36(){
@@ -12357,7 +12359,7 @@ static void drawCircuitFinishV31(){
 }
 static void drawGpsLoggerMenuV31(){
   fillScreen(C_V31_BG);drawTopBarV31();
-  drawTextV31(14,41,"GPS LOGGER",C_V31_WHITE,2);char hz[12];snprintf(hz,sizeof(hz),"%u HZ",(unsigned)gnssRateHzV36());
+  drawTextV31(14,41,"GPS LOGGER",C_V31_WHITE,2);char hz[12];snprintf(hz,sizeof(hz),"%s",gnssRateTextV40());
   drawTextRightV31(302,42,hz,C_V31_BLUE,1);drawHLineV31(14,58,292,C_V31_BLUE);
   const char* lab[]={"START LOGGER","LOG RATE","AUTO START","LOGGER INFO"};
   char a[5];boolTextV31(loggerAutoStartV31,a,sizeof(a));
@@ -12379,7 +12381,7 @@ static void drawLoggerRecordingV31(){
   fillScreen(C_V31_BG);drawTopBarV31();drawTextV31(14,41,"GPS LOGGER",C_V31_WHITE,2);drawTextRightV31(302,42,"REC",C_V31_RED,1);drawHLineV31(14,58,292,C_V31_BLUE);
   char sp[16],tm[20],hz[12];snprintf(sp,sizeof(sp),"%.0f",spdDispV36(gpsSpeedKmhV30));formatMsV31(loggerV31.elapsedMs,tm,sizeof(tm));
   // FIX 6 Sep 2026: label rate dulu hardcode "25 Hz" -- salah kalau user pilih 10 Hz di menu GNSS.
-  snprintf(hz,sizeof(hz),"%u Hz",(unsigned)(gnssUpdateRateIdxV36==0?10:25));
+  snprintf(hz,sizeof(hz),"%s",gnssRateTextV40());
   drawTextCenteredV31(92,69,sp,C_V31_WHITE,4);drawTextCenteredV31(92,103,spdUnitV36(),C_V31_GRAY,1);
   drawTextCenteredV31(226,70,"TIME",C_V31_GRAY,1);drawTextCenteredV31(226,90,tm,C_V31_WHITE,2);drawTextCenteredV31(226,108,hz,C_V31_BLUE,1);
   const int16_t x[3]={14,92,170};for(uint8_t i=0;i<3;i++)drawPanelV31(x[i],120,72,42,false);
@@ -13313,14 +13315,14 @@ static void serviceSerialCommandsV31(){static String cmd;while(Serial.available(
 
 void setup(){
   rtc_gpio_deinit((gpio_num_t)PCF_INT_PIN);   // lepas mode RTC sisa deep sleep -> GPIO biasa lagi
-  Serial.begin(115200);delay(400);
+  Serial.begin(115200);delay(100);
   Serial.println();
   BOOTMARK_V36("00 serial hidup");
   Serial.printf("BOOT> reset reason=%d  cpu=%d MHz  heap=%u\n",
                 (int)esp_reset_reason(),(int)getCpuFrequencyMhz(),(unsigned)ESP.getFreeHeap());
   Serial.flush();
   pinMode(TFT_CS,OUTPUT);pinMode(TFT_DC,OUTPUT);pinMode(TFT_RST,OUTPUT);digitalWrite(TFT_CS,HIGH);digitalWrite(TFT_DC,HIGH);digitalWrite(TFT_RST,HIGH);
-  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,HIGH);   // backlight ON penuh saat boot (PCB V2: Q5/TFT_BL); level user dipasang setelah setting dimuat
+  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,LOW);   // V36.8: backlight MATI dulu -- dinyalakan setelah logo opening tergambar (dulu ON di sini = layar putih 1-2 s)
   BOOTMARK_V36("01 pin TFT siap");
   pinMode(ICM_CS_PIN,OUTPUT);digitalWrite(ICM_CS_PIN,HIGH);   // IMU ICM-42688-P share bus SPI dengan TFT, CS sendiri
   pinMode(FLASH_CS_PIN,OUTPUT);digitalWrite(FLASH_CS_PIN,HIGH); // flash U7 dijamin non-aktif -- jangan sampai ikut mendorong SPI_MISO
@@ -13365,13 +13367,16 @@ void setup(){
   // configureMg90225HzV30() yang dipanggil dari detectAndConfigureGpsV32() (UART sudah hidup).
   prefsV31.begin("rs16v31",false);BOOTMARK_V36("09 NVS/preferences terbuka");
   loadSettingsV31();loadCompareV36();BOOTMARK_V36("10 setting dimuat");
-  setBacklightV36(true);   // kecerahan sesuai setting user
   initImuV31();Serial.printf("BOOT> 11 IMU = %s (%s)  SPI WHO mode3: ICM=0x%02X LSM=0x%02X  mode0: ICM=0x%02X LSM=0x%02X\n",imuChipNameV36(),imuConnectedV31?"TERDETEKSI":"TIDAK TERDETEKSI",imuDiagIcmV37[0],imuDiagLsmV37[0],imuDiagIcmV37[1],imuDiagLsmV37[1]);Serial.flush();
+  // V36.8: LCD di-init & logo opening digambar SEBELUM backlight dinyalakan -> tidak ada layar putih.
+  // Sengaja SETELAH deteksi IMU: sebelum dikonfigurasi, IMU bisa membaca trafik LCD di SCK/MOSI sebagai I2C.
+  lcdInit();fillScreen(C_BLACK);drawRs16OpeningBitmap();setBacklightV36(true);
+  const uint32_t openingShownMsV40=millis();
+  BOOTMARK_V36("13 LCD di-init + logo opening tampil");
   updateBatteryV31(true);Serial.printf("BOOT> 12 baterai = %.2f V\n",batteryVoltageV31);Serial.flush();
-  lcdInit();BOOTMARK_V36("13 LCD di-init");
-  drawOpening();BOOTMARK_V36("14 opening screen digambar");
   detectAndConfigureGpsV32();BOOTMARK_V36("15 GPS selesai dideteksi");
   initSdV31();runLogInitV38();BOOTMARK_V36("16 storage dicek");
+  while(millis()-openingShownMsV40<1700UL)delay(10);   // logo tampil minimal 1,7 s
   drawSelectedMenu(selectedMenu);lastActivityMsV31=millis();BOOTMARK_V36("17 menu utama digambar");
   Serial.println("RS16 V36 READY - ALL MENU ACTIONS / LIVE DATA / STABLE GNSS");Serial.printf("GNSS MG-902 UBX 25Hz, IMU %s 200Hz, RAW SPI ILI9341\n",imuChipNameV36());Serial.println(RS16_SD_ENABLED?"MICROSD COMPILE ENABLED":"MICROSD SLOT EXISTS; SET SD GPIO MAP TO ENABLE WRITES");
 }
