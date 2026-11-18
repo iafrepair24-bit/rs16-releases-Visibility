@@ -401,7 +401,10 @@ static void setGpsPort115200V32() {
 
 static void configureMg90225HzV30();   // V36.2: forward decl eksplisit (dulu bergantung prototype otomatis IDE)
 
+static void gpsConfigureFoundV40();
+static int8_t gpsScanIdxV40=-1;   // V36.8 pencarian GPS latar belakang (-1 = tidak aktif)
 static bool detectAndConfigureGpsV32() {
+  gpsScanIdxV40=-1;
   gpsProtocolDetectedV32 = false;
   gpsUbxDetectedV32 = false;
   gpsNmeaDetectedV32 = false;
@@ -436,6 +439,12 @@ static bool detectAndConfigureGpsV32() {
     return false;
   }
 
+  gpsConfigureFoundV40();
+  return true;
+}
+// V36.8: langkah setelah protokol GPS ditemukan (dipakai deteksi saat boot & pencarian latar belakang)
+static void gpsConfigureFoundV40() {
+  gpsScanIdxV40=-1;
   if (gpsActiveBaudV32 != 115200UL) {
     Serial.printf("GNSS: switching UART %lu -> 115200\n",
                   (unsigned long)gpsActiveBaudV32);
@@ -451,7 +460,42 @@ static bool detectAndConfigureGpsV32() {
   while (gpsSerial.available() > 0) gpsSerial.read();
   configureMg90225HzV30();
   gpsLastAutoDetectMillisV32 = millis();
-  return true;
+}
+
+// V36.8 PENCARIAN GPS DI LATAR BELAKANG. Dulu semua baud (x2 posisi pin) dicoba saat boot sambil logo
+// tampil -> kalau GPS tidak langsung menjawab, opening tertahan +-8 detik. Sekarang saat boot hanya
+// dicek sebentar di 115200; sisanya dicoba satu per satu di loop tanpa menghentikan layar/tombol.
+static uint32_t gpsScanStartV40=0;
+static uint8_t gpsScanPrevV40=0,gpsScanNmeaV40=0;static uint16_t gpsScanBytesV40=0;static bool gpsScanUbxV40=false,gpsScanNmeaSeenV40=false;
+static const uint32_t GPS_SCAN_BAUD_V40[7]={115200UL,9600UL,38400UL,57600UL,230400UL,115200UL,9600UL};
+static void gpsScanBeginV40(int8_t i){
+  gpsScanIdxV40=i;const bool swap=i>=5;
+  gpsRxPinV37=swap?GPS_TX_PIN:GPS_RX_PIN;gpsTxPinV37=swap?GPS_RX_PIN:GPS_TX_PIN;
+  gpsSerial.end();gpsSerial.setRxBufferSize(4096);gpsSerial.begin(GPS_SCAN_BAUD_V40[i],SERIAL_8N1,gpsRxPinV37,gpsTxPinV37);
+  gpsScanStartV40=millis();gpsScanPrevV40=0;gpsScanNmeaV40=0;gpsScanBytesV40=0;gpsScanUbxV40=false;gpsScanNmeaSeenV40=false;
+}
+static void serviceGpsScanV40(){
+  if(gpsScanIdxV40<0)return;
+  while(gpsSerial.available()>0){
+    const uint8_t b=(uint8_t)gpsSerial.read();gpsScanBytesV40++;
+    if(gpsScanPrevV40==0xB5&&b==0x62)gpsScanUbxV40=true;
+    if(gpsScanNmeaV40==0){if(b=='$')gpsScanNmeaV40=1;}
+    else if(gpsScanNmeaV40==1){gpsScanNmeaV40=(b=='G'||b=='B')?2:((b=='$')?1:0);}
+    else{if(b>='A'&&b<='Z')gpsScanNmeaSeenV40=true;gpsScanNmeaV40=0;}
+    gpsScanPrevV40=b;
+    if((gpsScanUbxV40||gpsScanNmeaSeenV40)&&gpsScanBytesV40>=8){
+      const int8_t i=gpsScanIdxV40;gpsScanIdxV40=-1;
+      gpsActiveBaudV32=GPS_SCAN_BAUD_V40[i];gpsProtocolDetectedV32=true;gpsUbxDetectedV32=gpsScanUbxV40;gpsNmeaDetectedV32=gpsScanNmeaSeenV40;
+      gpsLastByteMillisV32=millis();
+      Serial.printf("GNSS DETECT (latar belakang) baud=%lu%s\n",(unsigned long)gpsActiveBaudV32,i>=5?"  TX/RX DITUKAR":"");
+      gpsConfigureFoundV40();return;
+    }
+  }
+  if(millis()-gpsScanStartV40>=1200UL){
+    int8_t n=gpsScanIdxV40+1;
+    if(n>=7){n=0;Serial.println("GNSS: belum ada data dari modul GPS, dicoba lagi");}
+    gpsScanBeginV40(n);
+  }
 }
 
 // ---------- V36.1 GNSS MODE: update rate, pilihan sistem GNSS, cold start ----------
@@ -13374,9 +13418,13 @@ void setup(){
   const uint32_t openingShownMsV40=millis();
   BOOTMARK_V36("13 LCD di-init + logo opening tampil");
   updateBatteryV31(true);Serial.printf("BOOT> 12 baterai = %.2f V\n",batteryVoltageV31);Serial.flush();
-  detectAndConfigureGpsV32();BOOTMARK_V36("15 GPS selesai dideteksi");
+  // V36.8: cek cepat 115200 saja (modul yang sudah dikonfigurasi langsung terbaca); kalau belum ada,
+  // pencarian baud lain berjalan di latar belakang -- opening tidak ikut tertahan.
+  if(sniffGpsBaudV32(115200UL,350)){gpsConfigureFoundV40();}
+  else{Serial.println("GNSS: belum terbaca di 115200, dicari di latar belakang");gpsScanBeginV40(0);}
+  BOOTMARK_V36("15 GPS dicek");
   initSdV31();runLogInitV38();BOOTMARK_V36("16 storage dicek");
-  while(millis()-openingShownMsV40<1700UL)delay(10);   // logo tampil minimal 1,7 s
+  while(millis()-openingShownMsV40<1000UL)delay(10);   // V36.8: logo tampil minimal 1 s
   drawSelectedMenu(selectedMenu);lastActivityMsV31=millis();BOOTMARK_V36("17 menu utama digambar");
   Serial.println("RS16 V36 READY - ALL MENU ACTIONS / LIVE DATA / STABLE GNSS");Serial.printf("GNSS MG-902 UBX 25Hz, IMU %s 200Hz, RAW SPI ILI9341\n",imuChipNameV36());Serial.println(RS16_SD_ENABLED?"MICROSD COMPILE ENABLED":"MICROSD SLOT EXISTS; SET SD GPIO MAP TO ENABLE WRITES");
 }
@@ -13397,5 +13445,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGpsScanV40();serviceGps25HzV30();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }
