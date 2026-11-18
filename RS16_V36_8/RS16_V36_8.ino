@@ -590,6 +590,11 @@ static void updateGpsLockV30() {
   }
 }
 
+// V36.8 FIX AKURASI: setiap paket NAV-PVT langsung diproses mesin DRAG / CIRCUIT / LOGGER saat paket
+// selesai dibaca. Dulu mesin hanya dipanggil sekali per putaran loop dan hanya melihat paket TERAKHIR:
+// saat layar digambar ulang (kirim 1 layar penuh ke LCD +-60-80 ms) 2-3 paket menumpuk dan sisanya
+// terbuang -> 25 Hz efektif jadi +-10 Hz, waktu start/finish meleset 0,01-0,03 s tidak menentu.
+static void gpsOnPvtSampleV40();
 static void handleUbxPacketV30(uint8_t cls, uint8_t id, const uint8_t* p, uint16_t len) {
   if (cls != 0x01) return;
 
@@ -636,6 +641,7 @@ static void handleUbxPacketV30(uint8_t cls, uint8_t id, const uint8_t* p, uint16
       gpsRateWindowStartV30 = now;
     }
     updateGpsLockV30();
+    gpsOnPvtSampleV40();
     return;
   }
 
@@ -10470,8 +10476,9 @@ static void dragTraceAddV36(float kmh,uint32_t ms){
 //  - belum lewat range pertama : 0,5 detik -> run dibuang, timer kembali 0, siap start lagi
 //  - sudah lewat range pertama : 2,0 detik -> run disimpan (STOP), timer kembali 0, siap start lagi
 static const uint32_t DRAG_STOP_DISCARD_MS_V40=500UL, DRAG_STOP_SAVE_MS_V40=2000UL;
-static bool dragRunStopV37=false; static uint32_t dragRunStopTowV37=0;   // 13 Nov 2026: deteksi berhenti di tengah run
-static void resetDragRuntimeV31(){dragRunStopV37=false;dTraceCountV36=0;dTraceStepV36=1;dTraceSkipV36=0;memset(&dragRtV31,0,sizeof(dragRtV31));for(uint8_t i=0;i<DRAG_CP_N;i++)dragRtV31.checkpointMs[i]=0xFFFFFFFFUL;speed0ZeroCountV36=0;resetTelemetryV31();}
+static bool dragRunStopV37=false; static uint32_t dragRunStopTowV37=0;
+static uint32_t dragMaxGapV40=0;   // V36.8 diagnosa: jeda terbesar antar data GPS selama run (ms)   // 13 Nov 2026: deteksi berhenti di tengah run
+static void resetDragRuntimeV31(){dragRunStopV37=false;dragMaxGapV40=0;dTraceCountV36=0;dTraceStepV36=1;dTraceSkipV36=0;memset(&dragRtV31,0,sizeof(dragRtV31));for(uint8_t i=0;i<DRAG_CP_N;i++)dragRtV31.checkpointMs[i]=0xFFFFFFFFUL;speed0ZeroCountV36=0;resetTelemetryV31();}
 static float dragFinishDistanceV31(){switch(selectedDragMode){case DRAG_QUARTER:return 402.336f;case DRAG_EIGHTH:return 201.168f;case DRAG_60FT:return 18.288f;case DRAG_CUSTOM:return customPointM[DRAG_CP_N-1];default:return 0;}}
 static float dragFinishSpeedV31(){return selectedDragMode==DRAG_0_100?(float)speedPointKmh[DRAG_CP_N-1]:selectedDragMode==DRAG_0_200?200.0f:0.0f;}
 static bool dragCheckpointsAreSpeedV31(){return selectedDragMode==DRAG_0_100||selectedDragMode==DRAG_0_200||selectedDragMode==DRAG_0_SPEED_0;}
@@ -10702,7 +10709,7 @@ static void finishDragV31(bool completed=true){
       saveCompareV36();
     }
   }
-  Serial.printf("DRAG FINISH,%s,%lu,%.2f,%.2f\n",dragModeNameV31(),(unsigned long)dragRtV31.totalMs,dragRtV31.rawDistanceM,dragRtV31.maxSpeedKmh);
+  Serial.printf("DRAG FINISH,%s,%lu,%.2f,%.2f,JEDA MAKS %lu ms\n",dragModeNameV31(),(unsigned long)dragRtV31.totalMs,dragRtV31.rawDistanceM,dragRtV31.maxSpeedKmh,(unsigned long)dragMaxGapV40);
 }
 // V36.2 engine drag:
 // - Jarak = integrasi kecepatan Doppler GNSS (trapesium, dt dari iTOW). Dulu jarak dijumlah dari
@@ -10751,12 +10758,20 @@ static void serviceDragV31(){
       dragRtV31.startTow=gpsTowInterpolateV30(dragRtV31.prevTow,tow,r);
       dragRtV31.timingStarted=true;
     }
+  }else if(!dragRtV31.timingStarted&&sp<1.0f){
+    // V36.8: sebelum timing mulai, kecepatan turun lagi < 1 km/h (derau GPS saat diam / maju pelan)
+    // -> jarak pra-start dibuang SEKETIKA. Dulu baru dibuang setelah diam 1 detik penuh, sehingga
+    // derau 0,5-1 km/h bisa menumpuk beberapa cm -> rollout 1 ft tercapai lebih awal -> waktu
+    // jadi lebih lama 0,01-0,03 s tidak menentu.
+    dragRtV31.motionSeen=false;dragRtV31.rawDistanceM=dragRtV31.prevRawDistanceM=0;dragStillV36=false;
+    dragRtV31.prevTow=tow;dragRtV31.prevSpeedKmh=sp;dragRtV31.prevPosValid=true;return;
   }
 
   // integrasi jarak dari sampel sebelumnya ke sampel ini
   dragRtV31.prevRawDistanceM=dragRtV31.rawDistanceM;
   {
     const uint32_t dt=gpsTowDeltaMsV30(tow,dragRtV31.prevTow);
+    if(dragRtV31.timingStarted&&dt>dragMaxGapV40)dragMaxGapV40=dt;
     if(dt>0&&dt<500UL)dragRtV31.rawDistanceM+=(dragRtV31.prevSpeedKmh+sp)*0.5f/3.6f*(dt*0.001f);
     else if(dt>=500UL&&dragRtV31.timingStarted){
       // V36.8: data GPS terputus >= 0,5 s di tengah run -> jarak tidak bisa dipercaya. Run dibatalkan
@@ -13365,6 +13380,9 @@ static void serviceGpsLedV40(){
   static int8_t last=-1;
   const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
   if(on!=last){last=on;digitalWrite(GPS_LED_PIN_V40,on?HIGH:LOW);}
+}
+static void gpsOnPvtSampleV40(){
+  serviceDragV31();serviceDragFinishFreezeV36();serviceCircuitV31();serviceLoggerV31();
 }
 void loop(){
   // Denyut hidup: kalau baris ini muncul terus tiap 5 detik, berarti firmware jalan normal.
