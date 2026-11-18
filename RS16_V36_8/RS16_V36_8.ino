@@ -122,6 +122,7 @@ struct DragCompareV36;        // V36.6: prototype otomatis runLogSaveV38()/migra
 enum DragModeId : uint8_t;    // V36.6: prototype otomatis enterDragSetupV38() (tipe dasar harus sama)
 
 #include "driver/rtc_io.h"   // pin bangun deep sleep (tombol POWER / PCF_INT)
+#include "driver/gpio.h"     // V36.8: matikan lampu latar sebelum setup()
 
 // ============================================================
 // MICROSD (J_SD1) PCB V2 100x55
@@ -11440,7 +11441,7 @@ enum DsKindV39 : uint8_t { DSK_SESSION=0, DSK_PRIMARY, DSK_R1, DSK_R2, DSK_R3, D
 static bool dragModeEditableV39(){return selectedDragMode==DRAG_CUSTOM||selectedDragMode==DRAG_0_100;}
 static uint8_t dragSetupRowsV39(){return dragModeEditableV39()?10:6;}   // V36.8: tanpa baris START
 static uint8_t dragSetupKindV39(uint8_t row){
-  if(dragModeEditableV39())return row<=9?row:DSK_FREEZE;
+  if(dragModeEditableV39())return row<=9?row:(uint8_t)DSK_FREEZE;
   static const uint8_t k[6]={DSK_SESSION,DSK_PRIMARY,DSK_COMPARE,DSK_DISPLAY,DSK_ROLLOUT,DSK_FREEZE};
   return k[row<6?row:5];
 }
@@ -13053,7 +13054,7 @@ static void handleButtonsV31(){
   }
   if(uiTestScreen==UI_DRAG_READY){if(start&BUTTON_EVENT_SHORT)startDragRunV31();if(back&BUTTON_EVENT_SHORT){enterDragSetupV38(selectedDragMode);}return;}
   if(uiTestScreen==UI_DRAG_RUNNING){if(back&BUTTON_EVENT_SHORT){finishDragV31(false);}return;}
-  if(uiTestScreen==UI_DRAG_FINISH){if(right&BUTTON_EVENT_SHORT){dragFinishGraphV36=!dragFinishGraphV36;dragFinishShownMsV36=millis();screenDirtyV31=true;}if(start&BUTTON_EVENT_SHORT){dragArmFromFinishV37();}if(back&BUTTON_EVENT_SHORT){dragFinishGraphV36=false;enterDragSetupV38(selectedDragMode);}return;}
+  if(uiTestScreen==UI_DRAG_FINISH){if(right&BUTTON_EVENT_SHORT){dragFinishGraphV36=!dragFinishGraphV36;screenDirtyV31=true;}if(start&BUTTON_EVENT_SHORT){dragArmFromFinishV37();}if(back&BUTTON_EVENT_SHORT){dragFinishGraphV36=false;enterDragSetupV38(selectedDragMode);}return;}
   if(uiTestScreen==UI_GNSS_MENU){
     if(up&BUTTON_EVENT_SHORT){gnssMenuSelection=gnssMenuSelection?gnssMenuSelection-1:3;screenDirtyV31=true;}
     if(down&BUTTON_EVENT_SHORT){gnssMenuSelection=(gnssMenuSelection+1)%4;screenDirtyV31=true;}
@@ -13588,7 +13589,15 @@ static void serviceSerialCommandsV31(){static String cmd;while(Serial.available(
 // langkah mana yang jadi biang keroknya. Tidak ada kaitan dengan tampilan/LCD.
 #define BOOTMARK_V36(step) do{ Serial.print("BOOT> "); Serial.println(step); Serial.flush(); }while(0)
 
+// V36.8: lampu latar DIMATIKAN SEDINI MUNGKIN (sebelum setup, saat konstruktor global jalan).
+// GPIO14 (TFT_BL -> Q5) punya pull-up internal saat reset yang mengalahkan R38 100k -> lampu latar
+// menyala sebelum LCD siap = layar putih. Celah di bootloader (+-0,3 s) hanya bisa ditutup di PCB:
+// ganti R38 100k -> 10k.
+__attribute__((constructor)) static void rs16BacklightOffEarlyV40(){
+  gpio_pullup_dis(GPIO_NUM_14);gpio_set_level(GPIO_NUM_14,0);gpio_set_direction(GPIO_NUM_14,GPIO_MODE_OUTPUT);gpio_set_level(GPIO_NUM_14,0);
+}
 void setup(){
+  pinMode(TFT_BL_PIN,OUTPUT);digitalWrite(TFT_BL_PIN,LOW);   // V36.8: baris pertama -- lampu latar mati
   rtc_gpio_deinit((gpio_num_t)PCF_INT_PIN);   // lepas mode RTC sisa deep sleep -> GPIO biasa lagi
   Serial.begin(115200);delay(100);
   Serial.println();
