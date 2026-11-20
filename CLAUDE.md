@@ -5,7 +5,7 @@
 Cara pengukuran waktu RS16 sudah dinyatakan bagus oleh pemilik dan **tidak boleh diubah**,
 di versi mana pun, kecuali pemilik sendiri memerintahkan perubahan pada bagian ini secara eksplisit.
 Permintaan lain (tampilan, menu, tombol, font, history, IMU, dll.) BUKAN izin untuk menyentuh bagian ini.
-Versi acuan: `RS16_V36_8/RS16_V36_8.ino`, tag git `timing-lock-v36.8`.
+Versi acuan: `RS16_V36_8/RS16_V36_8.ino` di commit `f10f59a` (branch `esp32-devkit-test`).
 
 Yang dikunci (nama fungsi/konstanta di `RS16_V36_8.ino`, ditandai `[DIKUNCI]` di kode):
 
@@ -25,8 +25,8 @@ Yang dikunci (nama fungsi/konstanta di `RS16_V36_8.ino`, ditandai `[DIKUNCI]` di
 - Rate GPS: `configureGnssRateMsgsV36()` + `gnssPickRateV40()` (0,04 s / 0,06 s mengikuti GNSS SYSTEM, turun otomatis).
 
 Kalau ada perubahan lain yang terpaksa menyentuh fungsi di atas, BERHENTI dan tanya pemilik dulu.
-Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan tag `timing-lock-v36.8`
-(misalnya `git diff timing-lock-v36.8 -- RS16_V36_8/RS16_V36_8.ino` lalu cek tidak ada baris di fungsi tersebut yang berubah).
+Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan commit `f10f59a`
+(misalnya `git diff f10f59a -- RS16_V36_8/RS16_V36_8.ino` lalu cek tidak ada baris di fungsi tersebut yang berubah).
 
 ## Lain-lain
 

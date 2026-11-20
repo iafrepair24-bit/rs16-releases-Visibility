@@ -272,13 +272,13 @@ static int32_t ubxI4V30(const uint8_t* p, uint16_t o) {
   return (int32_t)ubxU4V30(p, o);
 }
 
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static uint32_t gpsTowDeltaMsV30(uint32_t newerTow, uint32_t olderTow) {
   if (newerTow >= olderTow) return newerTow - olderTow;
   return GPS_WEEK_MS_V30 - olderTow + newerTow;
 }
 
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static uint32_t gpsTowInterpolateV30(uint32_t olderTow, uint32_t newerTow, float ratio) {
   ratio = constrain(ratio, 0.0f, 1.0f);
   uint32_t dt = gpsTowDeltaMsV30(newerTow, olderTow);
@@ -529,7 +529,7 @@ static void gnssPickRateV40(){ gnssMeasAutoV40 = (gnssSystemIdxV36 >= 4) ? 60 : 
 // V36.2: rate + pesan UBX saja (TANPA CFG-GNSS). Dipakai juga oleh recovery stream --
 // dulu recovery ikut mengirim CFG-GNSS, padahal mengubah konfigurasi konstelasi bisa memicu
 // restart GNSS di modul (fix hilang lagi) tepat saat stream sedang bermasalah.
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void configureGnssRateMsgsV36() {
   // UBX-CFG-RATE mengikuti pilihan user: 100 ms (10 Hz) atau 40 ms (25 Hz).
   const uint16_t meas = gnssMeasMsV40();   // V36.8: 60 ms atau 40 ms
@@ -657,7 +657,7 @@ static void updateGpsLockV30() {
 // saat layar digambar ulang (kirim 1 layar penuh ke LCD +-60-80 ms) 2-3 paket menumpuk dan sisanya
 // terbuang -> 25 Hz efektif jadi +-10 Hz, waktu start/finish meleset 0,01-0,03 s tidak menentu.
 static void gpsOnPvtSampleV40();
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void handleUbxPacketV30(uint8_t cls, uint8_t id, const uint8_t* p, uint16_t len) {
   if (cls != 0x01) return;
 
@@ -10692,17 +10692,17 @@ static void dragTraceAddV36(float kmh,uint32_t ms){
 // V36.8 batas BERHENTI di tengah run (kecepatan <= 1 km/h terus-menerus):
 //  - belum lewat range pertama : 0,5 detik -> run dibuang, timer kembali 0, siap start lagi
 //  - sudah lewat range pertama : 2,0 detik -> run disimpan (STOP), timer kembali 0, siap start lagi
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static const uint32_t DRAG_STOP_DISCARD_MS_V40=500UL, DRAG_STOP_SAVE_MS_V40=2000UL;
 static bool dragRunStopV37=false; static uint32_t dragRunStopTowV37=0;
 static uint32_t dragMaxGapV40=0;   // V36.8 diagnosa: jeda terbesar antar data GPS selama run (ms)   // 13 Nov 2026: deteksi berhenti di tengah run
 static void resetDragRuntimeV31(){dragRunStopV37=false;dragMaxGapV40=0;dTraceCountV36=0;dTraceStepV36=1;dTraceSkipV36=0;memset(&dragRtV31,0,sizeof(dragRtV31));for(uint8_t i=0;i<DRAG_CP_N;i++)dragRtV31.checkpointMs[i]=0xFFFFFFFFUL;speed0ZeroCountV36=0;resetTelemetryV31();}
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static float dragFinishDistanceV31(){switch(selectedDragMode){case DRAG_QUARTER:return 402.336f;case DRAG_EIGHTH:return 201.168f;case DRAG_60FT:return 18.288f;case DRAG_CUSTOM:return customPointM[DRAG_CP_N-1];default:return 0;}}
 static float dragFinishSpeedV31(){return selectedDragMode==DRAG_0_100?(float)speedPointKmh[DRAG_CP_N-1]:selectedDragMode==DRAG_0_200?200.0f:0.0f;}
 static bool dragCheckpointsAreSpeedV31(){return selectedDragMode==DRAG_0_100||selectedDragMode==DRAG_0_200||selectedDragMode==DRAG_0_SPEED_0;}
 static float speed0TargetV36(){return (float)speed0TargetKmh;}
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void dragTargetsV31(float o[DRAG_CP_N]){
   for(uint8_t i=0;i<DRAG_CP_N;i++)o[i]=0.0f;
   if(selectedDragMode==DRAG_QUARTER){o[0]=18.288f;o[1]=100.0f;o[2]=201.168f;o[3]=300.0f;o[4]=402.336f;}
@@ -10924,7 +10924,7 @@ static bool dragShowRestoreV40(uint32_t tow,float sp){
 }
 // V36.2: completed=false dipakai saat user menekan BACK di tengah run. Dulu abort ikut disimpan
 // sebagai LAST dan -- karena waktunya pendek -- sebagai BEST, sehingga rekor jadi palsu.
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void finishDragV31(bool completed=true){
   dragRtV31.finished=true;
   dragAbortedV36=!completed;dragStopSavedV40=false;dragPostStillMsV40=0;
@@ -10970,7 +10970,7 @@ static void dragRearmStillV37(uint32_t tow,float sp){
   screenDirtyV31=true;
 }
 // simpan run yang berhenti setelah lewat >=1 checkpoint: LAST saja (BEST hanya untuk run sampai finish)
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void dragSavePartialV37(){
   const uint8_t m=(uint8_t)selectedDragMode;if(m>=DRAG_MODE_COUNT_V36||dragRtV31.reached==0)return;
   DragCompareV36 cur;for(uint8_t i=0;i<DRAG_CP_N;i++)cur.cp[i]=dragRtV31.checkpointMs[i];
@@ -10981,7 +10981,7 @@ static void dragSavePartialV37(){
   if(soundFinishV31)buzzerPlayV31(1800,150);
   Serial.printf("DRAG STOP SAVED,%s,CP%u,%lu\n",dragModeNameV31(),(unsigned)dragRtV31.reached,(unsigned long)cur.total);
 }
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void serviceDragV31(){
   if(uiTestScreen!=UI_DRAG_RUNNING||dragRtV31.lastSeq==gpsPvtSequenceV30)return;
   if(gpsLastPvtMillisV30==0||millis()-gpsLastPvtMillisV30>1000UL||!gpsFixRawV30||gpsFixTypeV30<2)return;
@@ -11142,7 +11142,7 @@ static bool loadTrackV31(){
 // V36.2: jarak lap dari integrasi kecepatan Doppler (bukan jitter posisi), waktu lap diinterpolasi
 // tepat di garis start/finish (dulu dibulatkan ke sampel GNSS terdekat: error s/d 40-100 ms per lap),
 // best lap disimpan ke NVS untuk HISTORY.
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void serviceCircuitV31(){
   if(!circuitRtV31.active||uiTestScreen!=UI_CIRCUIT_RUNNING||!gpsTimingReadyV31()||circuitRtV31.lastSeq==gpsPvtSequenceV30)return;circuitRtV31.lastSeq=gpsPvtSequenceV30;
   const float sp=gpsSpeedKmhV30<0.5f?0.0f:gpsSpeedKmhV30;
@@ -12862,7 +12862,7 @@ static bool dragFinishHeldV40(){   // hasil ditahan di layar karena LAP TIME FRE
   if(dragFreezeModeV36==0)return false;
   const uint32_t hold=dragFreezeModeV36==1?10000UL:30000UL;return millis()-dragFinishShownMsV36<hold;
 }
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void serviceDragFinishFreezeV36(){
   if(uiTestScreen!=UI_DRAG_FINISH){dragFreezeStillV37=false;dragFreezeMovePendV40=false;return;}
   // freeze habis -> layar ganti dari HASIL ke SPEDO (kalau masih bergerak)
@@ -13718,7 +13718,7 @@ static void serviceGpsLedV40(){
   const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
   if(on!=last){last=on;digitalWrite(GPS_LED_PIN_V40,on?HIGH:LOW);}
 }
-// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, tag timing-lock-v36.8).
+// [DIKUNCI] PENGUKURAN WAKTU RS16 -- JANGAN DIUBAH tanpa perintah eksplisit pemilik (lihat CLAUDE.md, acuan commit f10f59a).
 static void gpsOnPvtSampleV40(){
   serviceDragV31();serviceDragFinishFreezeV36();serviceCircuitV31();serviceLoggerV31();
 }
