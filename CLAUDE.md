@@ -6,8 +6,9 @@ Cara pengukuran waktu RS16 sudah dinyatakan bagus oleh pemilik dan **tidak boleh
 di versi mana pun, kecuali pemilik sendiri memerintahkan perubahan pada bagian ini secara eksplisit.
 Permintaan lain (tampilan, menu, tombol, font, history, IMU, dll.) BUKAN izin untuk menyentuh bagian ini.
 Versi acuan: `RS16_V36_8/RS16_V36_8.ino` di commit `f10f59a` (branch `esp32-devkit-test`).
+Kode sekarang ada di `RS16_V36_9/RS16_V36_9.ino` (V36.9 = V36.8 + koneksi aplikasi); isi fungsi yang dikunci harus tetap sama dengan acuan.
 
-Yang dikunci (nama fungsi/konstanta di `RS16_V36_8.ino`, ditandai `[DIKUNCI]` di kode):
+Yang dikunci (nama fungsi/konstanta, ditandai `[DIKUNCI]` di kode):
 
 - Waktu dari GPS: `gpsTowDeltaMsV30()`, `gpsTowInterpolateV30()` (iTOW u-blox, interpolasi linier antar sampel).
 - Penerimaan data: `handleUbxPacketV30()` bagian NAV-PVT dan `gpsOnPvtSampleV40()` — SETIAP paket NAV-PVT
@@ -31,7 +32,7 @@ Pengecualian yang SUDAH diizinkan pemilik:
 
 Kalau ada perubahan lain yang terpaksa menyentuh fungsi di atas, BERHENTI dan tanya pemilik dulu.
 Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan commit `f10f59a`
-(misalnya `git diff f10f59a -- RS16_V36_8/RS16_V36_8.ino` lalu cek tidak ada baris di fungsi tersebut yang berubah).
+(bandingkan isi tiap fungsi di `RS16_V36_9/RS16_V36_9.ino` dengan `git show f10f59a:RS16_V36_8/RS16_V36_8.ino`).
 
 ## Lain-lain
 
@@ -39,3 +40,6 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
 - Jangan ubah logo dan bitmap menu utama.
 - Hardware: PCB V2 100x55 (ESP32-WROOM-32). IMU U8 = LSM6 (footprint ICM-42688 LGA-14, pin kompatibel).
 - Build: board ESP32 Dev Module, Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA)".
+- Aplikasi Android pemilik: "RS16 Race Speed" (proyek APK terpisah, id.rs16.racespeed). Protokol ke alat:
+  WebSocket ws://192.168.4.1:81 (alat kirim `HELLO,RS16,<versi>` lalu `RS,iTOW,lat,lon,kmh,hdg,sat,gLat,gLong` per sampel),
+  update firmware POST /update (multipart, Basic auth). Perintah `HZ,..` dari aplikasi sengaja diabaikan (rate dikunci).
