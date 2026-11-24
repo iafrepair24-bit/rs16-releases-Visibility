@@ -11251,38 +11251,139 @@ static bool otaAuthOkV36(){
   rs16ServerV31.requestAuthentication();
   return false;
 }
-static void configureOtaRoutesV31(){if(serverRoutesV31)return;serverRoutesV31=true;rs16ServerV31.on("/",HTTP_GET,[]{rs16ServerV31.send(200,"text/plain","RS16 V31 LIVE\nGET /status\nPOST /update\n");});rs16ServerV31.on("/status",HTTP_GET,[]{char j[220];snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"gps_hz\":%.1f,\"sat\":%u,\"fix\":%s,\"imu\":%s,\"sd\":%s}",gpsActualRateHzV30,gpsSatellitesV30,gpsTimingReadyV31()?"true":"false",imuConnectedV31?"true":"false",sdReadyV31?"true":"false");rs16ServerV31.send(200,"application/json",j);});
-  rs16ServerV31.on("/update",HTTP_POST,[]{
-      if(!otaAuthOkV36())return;                       // V36.1 OTA wajib auth
-      bool ok=!Update.hasError()&&otaBytesV31>0&&Update.isFinished();   // V36.2: tanpa file = bukan sukses
-      rs16ServerV31.send(ok?200:500,"application/json",ok?"{\"ok\":true}":"{\"ok\":false}");
-      otaInProgressV31=false;
-      if(ok){delay(400);ESP.restart();}
-    },[]{
-      HTTPUpload&u=rs16ServerV31.upload();
-      if(u.status==UPLOAD_FILE_START){
-        if(!rs16ServerV31.authenticate(otaUserV36.c_str(),otaPassV36.c_str())){otaInProgressV31=false;return;}
-        otaBytesV31=0;otaLastActivityMsV36=millis();
-        otaInProgressV31=Update.begin(UPDATE_SIZE_UNKNOWN);   // V36.2: hasil begin() dicek
-        if(!otaInProgressV31)Serial.println("OTA: Update.begin GAGAL");
-      }else if(u.status==UPLOAD_FILE_WRITE){
-        if(otaInProgressV31){Update.write(u.buf,u.currentSize);otaBytesV31+=u.currentSize;otaLastActivityMsV36=millis();}
-      }else if(u.status==UPLOAD_FILE_END){
-        if(otaInProgressV31)Update.end(true);
-      }else if(u.status==UPLOAD_FILE_ABORTED){
-        if(otaInProgressV31)Update.abort();
-        otaInProgressV31=false;
-      }
-    });
+// ======================= V36.8 APLIKASI RS16 (WiFi) =======================
+// HP tersambung ke WiFi RS16_0016 (password RS160016) lalu buka http://192.168.4.1 di browser:
+// halaman aplikasi tersimpan di firmware (status alat + upload file .bin untuk update).
+// API untuk aplikasi lain (Android/iOS) di masa depan:
+//   GET  /api/info                -> JSON status alat
+//   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
+//                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
+//   POST /update (lama) & GET /status (lama) tetap ada.
+#define RS16_FW_VERSION "V36.8"
+static const char RS16_WEB_HTML_V40[] PROGMEM = R"RS16HTML(<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RS16</title><style>
+:root{--bg:#070b14;--card:#0f1626;--edge:#1e2a44;--txt:#e8edf7;--mut:#8a96b0;--blue:#1e9bff;--grn:#3bdc7a;--red:#ff5a5a;--gold:#ffcd50}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+header{padding:18px 16px 10px;display:flex;align-items:baseline;gap:10px}header b{font-size:26px;letter-spacing:.5px}header b i{color:var(--blue);font-style:normal}
+header span{color:var(--mut);font-size:13px}main{padding:0 16px 32px;max-width:560px;margin:auto}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:16px;margin-bottom:14px}
+h2{margin:0 0 12px;font-size:13px;letter-spacing:1px;color:var(--mut);font-weight:600}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.it{background:#0a1020;border-radius:10px;padding:10px}
+.it small{display:block;color:var(--mut);font-size:11px;letter-spacing:.5px}.it div{font-size:18px;font-weight:600}
+.ok{color:var(--grn)}.bad{color:var(--red)}
+label{display:block;color:var(--mut);font-size:12px;margin:10px 0 4px}
+input[type=password]{width:100%;padding:11px;border-radius:10px;border:1px solid var(--edge);background:#0a1020;color:var(--txt);font-size:16px}
+.file{display:flex;align-items:center;gap:10px;padding:12px;border:1px dashed var(--edge);border-radius:10px;background:#0a1020}
+.file input{display:none}.file label{margin:0;background:var(--edge);color:var(--txt);padding:8px 12px;border-radius:8px;font-size:14px;cursor:pointer}
+#fn{color:var(--mut);font-size:13px;word-break:break-all}
+button{width:100%;margin-top:14px;padding:14px;border:0;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:700}
+button:disabled{opacity:.4}.bar{height:12px;background:#0a1020;border-radius:6px;overflow:hidden;margin-top:14px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#1e9bff,#3bdc7a);transition:width .2s}
+#msg{margin-top:10px;font-size:14px;min-height:20px}ol{margin:0;padding-left:18px;color:var(--mut);font-size:13px}
+</style></head><body>
+<header><b>RS<i>16</i></b><span id="fw">-</span></header><main>
+<div class="card"><h2>STATUS ALAT</h2><div class="grid">
+<div class="it"><small>BATERAI</small><div id="bat">-</div></div><div class="it"><small>GPS</small><div id="gps">-</div></div>
+<div class="it"><small>IMU</small><div id="imu">-</div></div><div class="it"><small>MICRO SD</small><div id="sd">-</div></div>
+</div></div>
+<div class="card"><h2>UPDATE FIRMWARE</h2>
+<div class="file"><input type="file" id="f" accept=".bin,application/octet-stream"><label for="f">Pilih file .bin</label><span id="fn">Belum ada file</span></div>
+<label for="pw">Password update</label><input type="password" id="pw" placeholder="sama dengan password WiFi" autocomplete="off">
+<button id="go" disabled>UPLOAD &amp; UPDATE</button><div class="bar"><i id="pb"></i></div><div id="msg"></div></div>
+<div class="card"><h2>CARA PAKAI</h2><ol>
+<li>Di Arduino IDE: Sketch &rarr; Export Compiled Binary, ambil file <b>RS16_V36_8.ino.bin</b> (bukan .bootloader / .partitions / .merged).</li>
+<li>Pilih file itu di atas, isi password, tekan UPLOAD.</li>
+<li>Jangan matikan alat sampai RS16 restart sendiri (&plusmn;30 detik).</li>
+<li>Setelah restart, WiFi RS16 mati. Nyalakan lagi dari menu APPLICATION kalau perlu.</li></ol></div>
+</main><script>
+var $=function(i){return document.getElementById(i)},busy=false,appMax=0;
+function info(){fetch('/api/info').then(function(r){return r.json()}).then(function(j){
+$('fw').textContent='Firmware '+j.fw;appMax=j.appMax||0;
+$('bat').innerHTML=j.batOk?(j.bat.toFixed(2)+' V <small style="display:inline;color:#8a96b0">'+j.batPct+'%</small>'):'-';
+$('gps').innerHTML=j.gpsReady?'<span class="ok">LOCK</span> '+j.sat+' SAT':'<span class="bad">CARI</span> '+j.sat+' SAT';
+$('imu').innerHTML=j.imu=='NONE'?'<span class="bad">TIDAK ADA</span>':j.imu;$('sd').innerHTML=j.sd?'<span class="ok">ADA</span>':'-';
+if(j.ota&&!busy){$('msg').textContent='Update berjalan dari perangkat lain...';}
+}).catch(function(){})}
+info();setInterval(function(){if(!busy)info()},2000);
+$('f').onchange=function(){var f=this.files[0];$('fn').textContent=f?(f.name+' ('+(f.size/1024).toFixed(0)+' KB)'):'Belum ada file';chk()};
+$('pw').oninput=chk;function chk(){$('go').disabled=busy||!$('f').files[0]||!$('pw').value}
+function say(t,c){$('msg').innerHTML='<span class="'+(c||'')+'">'+t+'</span>'}
+$('go').onclick=function(){var f=$('f').files[0];if(!f)return;
+if(!/\.bin$/i.test(f.name)){say('File harus berakhiran .bin','bad');return}
+if(/bootloader|partitions|merged/i.test(f.name)){say('Pakai file firmware utama (RS16_V36_8.ino.bin), bukan '+f.name,'bad');return}
+if(appMax&&f.size>appMax){say('File terlalu besar ('+(f.size/1024|0)+' KB, maks '+(appMax/1024|0)+' KB)','bad');return}
+var rd=new FileReader();rd.onload=function(){if(new Uint8Array(rd.result)[0]!==0xE9){say('Ini bukan file firmware ESP32','bad');return}send(f)};rd.readAsArrayBuffer(f.slice(0,1))};
+function send(f){busy=true;chk();say('Mengirim... jangan tutup halaman ini');
+var fd=new FormData();fd.append('firmware',f,f.name);var x=new XMLHttpRequest();
+x.open('POST','/api/update?size='+f.size);x.setRequestHeader('Authorization','Basic '+btoa('rs16:'+$('pw').value));
+x.upload.onprogress=function(e){if(e.lengthComputable){var p=e.loaded*100/e.total;$('pb').style.width=p+'%';say('Mengirim '+p.toFixed(0)+'%')}};
+x.onload=function(){var j={};try{j=JSON.parse(x.responseText)}catch(e){}
+if(x.status==200&&j.ok){$('pb').style.width='100%';say('BERHASIL. RS16 restart sendiri, tunggu &plusmn;10 detik.','ok')}
+else{busy=false;chk();$('pb').style.width='0';say('GAGAL: '+(j.error||('HTTP '+x.status)),'bad')}};
+x.onerror=function(){busy=false;chk();say('Koneksi terputus. Pastikan HP masih tersambung ke WiFi RS16.','bad')};x.send(fd)}
+</script></body></html>)RS16HTML";
+static bool activeMeasurementV31();
+static uint32_t otaTotalV40=0,otaRestartAtV40=0;static char otaErrV40[48]="";static bool otaAuthFailV40=false;
+static void otaFailV40(const char* e){if(!otaErrV40[0])snprintf(otaErrV40,sizeof(otaErrV40),"%s",e);if(otaInProgressV31){Update.abort();otaInProgressV31=false;}screenDirtyV31=true;Serial.printf("OTA GAGAL: %s\n",e);}
+static void otaUploadV40(){
+  HTTPUpload&u=rs16ServerV31.upload();
+  if(u.status==UPLOAD_FILE_START){
+    otaErrV40[0]=0;otaBytesV31=0;otaTotalV40=(uint32_t)rs16ServerV31.arg("size").toInt();otaLastActivityMsV36=millis();
+    otaAuthFailV40=!rs16ServerV31.authenticate(otaUserV36.c_str(),otaPassV36.c_str());
+    if(otaAuthFailV40){otaFailV40("PASSWORD SALAH");return;}
+    if(otaInProgressV31){otaFailV40("UPDATE LAIN SEDANG BERJALAN");return;}
+    if(activeMeasurementV31()){otaFailV40("ALAT SEDANG MENGUKUR - STOP DULU");return;}
+    if(batteryValidV31&&batteryPercentV31<15){otaFailV40("BATERAI LEMAH - CAS DULU");return;}
+    if(!Update.begin(otaTotalV40?otaTotalV40:UPDATE_SIZE_UNKNOWN)){otaFailV40(otaTotalV40>ESP.getFreeSketchSpace()?"FILE TERLALU BESAR":"GAGAL MULAI UPDATE");return;}
+    otaInProgressV31=true;
+    uiTestScreen=UI_APPLICATION_FW_UPDATE;screenDirtyV31=true;
+    Serial.printf("OTA MULAI: %s %lu byte\n",u.filename.c_str(),(unsigned long)otaTotalV40);
+  }else if(u.status==UPLOAD_FILE_WRITE){
+    if(!otaInProgressV31)return;
+    if(otaBytesV31==0&&u.currentSize&&u.buf[0]!=0xE9){otaFailV40("BUKAN FILE FIRMWARE ESP32");return;}
+    if(Update.write(u.buf,u.currentSize)!=u.currentSize){otaFailV40("GAGAL MENULIS FLASH");return;}
+    otaBytesV31+=u.currentSize;otaLastActivityMsV36=millis();
+    {static uint32_t lastUi=0;if(millis()-lastUi>300){lastUi=millis();screenDirtyV31=true;}}
+  }else if(u.status==UPLOAD_FILE_END){
+    if(!otaInProgressV31)return;
+    if(!Update.end(true)){otaFailV40("FILE RUSAK / TIDAK VALID");return;}
+    Serial.printf("OTA SELESAI: %lu byte\n",(unsigned long)otaBytesV31);
+  }else if(u.status==UPLOAD_FILE_ABORTED){
+    otaFailV40("UPLOAD TERPUTUS");
+  }
+}
+static void otaFinishV40(){
+  const bool ok=!otaErrV40[0]&&otaBytesV31>0&&Update.isFinished();
+  char j[96];snprintf(j,sizeof(j),"{\"ok\":%s,\"error\":\"%s\"}",ok?"true":"false",ok?"":(otaErrV40[0]?otaErrV40:"UPDATE GAGAL"));
+  rs16ServerV31.send(ok?200:(otaAuthFailV40?401:500),"application/json",j);
+  otaInProgressV31=false;screenDirtyV31=true;
+  if(ok){otaRestartAtV40=millis()+1500UL;Serial.println("OTA BERHASIL -> restart");}
+}
+static void configureOtaRoutesV31(){
+  if(serverRoutesV31)return;serverRoutesV31=true;
+  rs16ServerV31.on("/",HTTP_GET,[]{rs16ServerV31.send_P(200,"text/html",RS16_WEB_HTML_V40);});
+  rs16ServerV31.on("/api/info",HTTP_GET,[]{
+    char j[420];
+    snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"fw\":\"%s\",\"batOk\":%s,\"bat\":%.2f,\"batPct\":%u,\"gpsReady\":%s,\"sat\":%u,\"gpsHz\":%.1f,"
+      "\"imu\":\"%s\",\"sd\":%s,\"appMax\":%lu,\"ota\":%s,\"otaBytes\":%lu,\"otaTotal\":%lu,\"otaError\":\"%s\",\"measuring\":%s}",
+      RS16_FW_VERSION,batteryValidV31?"true":"false",batteryVoltageV31,(unsigned)batteryPercentV31,gpsTimingReadyV31()?"true":"false",
+      (unsigned)gpsSatellitesV30,gpsActualRateHzV30,imuChipNameV36(),sdReadyV31?"true":"false",(unsigned long)ESP.getFreeSketchSpace(),
+      otaInProgressV31?"true":"false",(unsigned long)otaBytesV31,(unsigned long)otaTotalV40,otaErrV40,
+      (activeMeasurementV31()&&!otaInProgressV31)?"true":"false");
+    rs16ServerV31.sendHeader("Cache-Control","no-store");rs16ServerV31.send(200,"application/json",j);});
+  rs16ServerV31.on("/status",HTTP_GET,[]{char j[220];snprintf(j,sizeof(j),"{\"device\":\"RS16\",\"gps_hz\":%.1f,\"sat\":%u,\"fix\":%s,\"imu\":%s,\"sd\":%s}",gpsActualRateHzV30,gpsSatellitesV30,gpsTimingReadyV31()?"true":"false",imuConnectedV31?"true":"false",sdReadyV31?"true":"false");rs16ServerV31.send(200,"application/json",j);});
+  rs16ServerV31.on("/api/update",HTTP_POST,otaFinishV40,otaUploadV40);
+  rs16ServerV31.on("/update",HTTP_POST,otaFinishV40,otaUploadV40);   // alamat lama tetap jalan
+  rs16ServerV31.onNotFound([]{rs16ServerV31.sendHeader("Location","/");rs16ServerV31.send(302,"text/plain","");});
 }
 static void startWifiV31(){if(wifiUserEnabledV31&&WiFi.getMode()==WIFI_AP)return;wifiUserEnabledV31=true;WiFi.mode(WIFI_AP);WiFi.softAP("RS16_0016","RS160016");configureOtaRoutesV31();rs16ServerV31.begin();screenDirtyV31=true;}
 static void stopWifiV31(){if(otaInProgressV31)return;wifiUserEnabledV31=false;rs16ServerV31.stop();WiFi.softAPdisconnect(true);WiFi.mode(WIFI_OFF);screenDirtyV31=true;}
 static void serviceWifiV31(){
   if(wifiUserEnabledV31)rs16ServerV31.handleClient();
+  if(otaRestartAtV40&&(int32_t)(millis()-otaRestartAtV40)>=0){Serial.flush();ESP.restart();}   // V36.8 restart setelah update sukses
   // V36.1 watchdog OTA: upload macet >30 detik dibatalkan supaya device tidak terkunci
   if(otaInProgressV31 && otaLastActivityMsV36 && millis()-otaLastActivityMsV36>30000UL){
-    Update.abort();
-    otaInProgressV31=false;
+    otaFailV40("UPLOAD MACET >30 DETIK");
     Serial.println("OTA WATCHDOG: UPLOAD STALLED, ABORTED");
     screenDirtyV31=true;
   }
@@ -12800,10 +12901,30 @@ static void drawGmeterV31(){
 static void drawImuCalRunningV31(){drawBaseV31("IMU CALIBRATION",imuConnectedV31?"SAMPLING":"NO IMU");uint16_t rawPct=(uint16_t)(imuCalCountV31/4);uint8_t pct=(uint8_t)((rawPct>100)?100:rawPct);char p[16];snprintf(p,sizeof(p),"%u%%",pct);drawTextCenteredV31(160,89,"KEEP VEHICLE STILL",C_V31_WHITE,2);drawPanelV31(42,130,236,20);fillRect(45,133,(int)(230*pct/100),14,C_V31_BLUE);drawTextCenteredV31(160,169,p,C_V31_WHITE,2);drawTextCenteredV31(160,202,imuCalActiveV31?"REAL SENSOR SAMPLING":"CALIBRATION COMPLETE",imuCalActiveV31?C_V31_GRAY:C_V31_GREEN,1);}
 static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
 
-static void drawApplicationMenuV31(){char w[8];boolTextV31(wifiUserEnabledV31,w,sizeof(w));const char* lab[]={"WI-FI","PHONE LINK","FIRMWARE UPDATE","CONNECTION INFO"};const char* val[]={w,"CONNECT / SYNC","UPDATE FROM PHONE","IP / STATUS"};drawMenuRowsV31("APPLICATION",lab,val,4,applicationSelection);}
+static void drawApplicationMenuV31(){char w[8];boolTextV31(wifiUserEnabledV31,w,sizeof(w));const char* lab[]={"WI-FI","PHONE LINK","FIRMWARE UPDATE","CONNECTION INFO"};const char* val[]={w,"APLIKASI DI HP","UPLOAD .BIN DARI HP","IP / STATUS"};drawMenuRowsV31("APPLICATION",lab,val,4,applicationSelection);}
 static void drawWifiV31(){drawBaseV31("WI-FI",wifiUserEnabledV31?"ON":"OFF");if(wifiUserEnabledV31){drawTextCenteredV31(160,81,"RS16_0016",C_V31_WHITE,2);drawTextCenteredV31(160,111,"IP 192.168.4.1",C_V31_BLUE,1);char c[24];snprintf(c,sizeof(c),"CLIENT %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,139,c,C_V31_TEXT,1);drawTextCenteredV31(160,169,"PASSWORD RS160016",C_V31_GRAY,1);}else{drawTextCenteredV31(160,102,"WI-FI OFF",C_V31_GRAY,2);drawTextCenteredV31(160,139,"WI-FI AVAILABLE",C_V31_BLUE,1);}drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
-static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"WIFI OFF");drawTextCenteredV31(160,82,"RS16 PHONE CONNECTION",C_V31_WHITE,2);drawTextCenteredV31(160,122,wifiUserEnabledV31?"CONNECT TO RS16_0016":"ENABLE WI-FI FIRST",C_V31_BLUE,1);drawTextCenteredV31(160,147,"DEVICE API: 192.168.4.1/STATUS",C_V31_TEXT,1);drawTextCenteredV31(160,177,"OTA: POST /UPDATE",C_V31_TEXT,1);drawTextCenteredV31(160,218,"CONNECTION READY",C_V31_GRAY,1);}
-static void drawOtaV31(){drawBaseV31("FIRMWARE UPDATE",otaInProgressV31?"UPDATING":"READY");if(!wifiUserEnabledV31)drawTextCenteredV31(160,92,"WI-FI WILL START",C_V31_BLUE,2);else{char b[30];snprintf(b,sizeof(b),"RECEIVED %lu BYTES",(unsigned long)otaBytesV31);drawTextCenteredV31(160,91,"POST FIRMWARE TO /UPDATE",C_V31_WHITE,1);drawTextCenteredV31(160,123,b,C_V31_TEXT,1);}drawTextCenteredV31(160,165,"192.168.4.1",C_V31_BLUE,2);drawTextCenteredV31(160,206,otaInProgressV31?"DO NOT POWER OFF":"UPDATE READY",otaInProgressV31?C_V31_RED:C_V31_GRAY,1);}
+static void drawPhoneV31(){drawBaseV31("PHONE LINK",wifiUserEnabledV31?"READY":"WIFI OFF");
+  drawTextCenteredV31(160,70,"APLIKASI RS16 DI HP",C_V31_WHITE,2);
+  drawTextV31(24,104,"1. SAMBUNGKAN WIFI HP KE",C_V31_GRAY,1);drawTextV31(40,120,"RS16_0016  PASSWORD RS160016",C_V31_WHITE,1);
+  drawTextV31(24,146,"2. BUKA BROWSER HP KE",C_V31_GRAY,1);drawTextV31(40,162,"192.168.4.1",C_V31_BLUE,2);
+  char c[24];snprintf(c,sizeof(c),"HP TERSAMBUNG: %u",wifiUserEnabledV31?WiFi.softAPgetStationNum():0);
+  drawTextCenteredV31(160,204,c,wifiUserEnabledV31&&WiFi.softAPgetStationNum()?C_V31_GREEN:C_V31_GRAY,1);}
+static void drawOtaV31(){
+  drawBaseV31("FIRMWARE UPDATE",otaRestartAtV40?"SELESAI":(otaInProgressV31?"UPDATING":"READY"));
+  if(otaRestartAtV40){drawTextCenteredV31(160,100,"UPDATE BERHASIL",C_V31_GREEN,2);drawTextCenteredV31(160,140,"RS16 RESTART...",C_V31_WHITE,1);return;}
+  if(otaInProgressV31){
+    const uint8_t pct=otaTotalV40?(uint8_t)min(100UL,(unsigned long)otaBytesV31*100UL/otaTotalV40):0;
+    char v[24];snprintf(v,sizeof(v),"%u%%",(unsigned)pct);drawTextCenteredV31(160,78,v,C_V31_WHITE,4);
+    drawRectV31(30,130,260,16,C_V31_EDGE);if(pct)fillRect(32,132,(int16_t)(256UL*pct/100UL),12,C_V31_BLUE);
+    snprintf(v,sizeof(v),"%lu / %lu KB",(unsigned long)(otaBytesV31/1024),(unsigned long)(otaTotalV40/1024));drawTextCenteredV31(160,156,v,C_V31_TEXT,1);
+    drawTextCenteredV31(160,196,"JANGAN MATIKAN ALAT",C_V31_RED,2);return;}
+  if(!wifiUserEnabledV31){drawTextCenteredV31(160,110,"WI-FI MENYALA...",C_V31_BLUE,2);return;}
+  drawTextV31(24,72,"1. WIFI HP KE RS16_0016",C_V31_GRAY,1);drawTextV31(40,88,"PASSWORD RS160016",C_V31_WHITE,1);
+  drawTextV31(24,112,"2. BROWSER HP KE",C_V31_GRAY,1);drawTextV31(40,128,"192.168.4.1",C_V31_BLUE,2);
+  drawTextV31(24,160,"3. PILIH FILE .BIN, TEKAN UPLOAD",C_V31_GRAY,1);
+  if(otaErrV40[0]){char e[60];snprintf(e,sizeof(e),"GAGAL: %s",otaErrV40);drawTextCenteredV31(160,196,e,C_V31_RED,1);}
+  else{char c[24];snprintf(c,sizeof(c),"HP TERSAMBUNG: %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,196,c,WiFi.softAPgetStationNum()?C_V31_GREEN:C_V31_GRAY,1);}
+}
 static void drawConnectionV31(){drawBaseV31("CONNECTION INFO",wifiUserEnabledV31?"ONLINE":"OFFLINE");char a[30],b[30],c[30];snprintf(a,sizeof(a),"WI-FI %s",wifiUserEnabledV31?"ON":"OFF");snprintf(b,sizeof(b),"CLIENT %u",wifiUserEnabledV31?WiFi.softAPgetStationNum():0);snprintf(c,sizeof(c),"OTA BYTES %lu",(unsigned long)otaBytesV31);drawTextV31(34,84,a,C_V31_WHITE,1);drawTextV31(34,115,"SSID RS16_0016",C_V31_WHITE,1);drawTextV31(34,146,"IP 192.168.4.1",C_V31_WHITE,1);drawTextV31(34,177,b,C_V31_WHITE,1);drawTextV31(34,208,c,C_V31_BLUE,1);}
 
 // V36.6 pemakaian flash: DATA = partisi riwayat (LittleFS), PROGRAM = firmware vs slot aplikasi
