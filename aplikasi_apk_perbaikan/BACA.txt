@@ -1,0 +1,15 @@
+PERBAIKAN APLIKASI "RS16 Race Speed" -> tampilan v1.1.2
+
+Masalah v1.1.1: di APK, halaman dibuka dari http://app.rs16/ dan kode menganggapnya "dibuka dari alat",
+sehingga alamat alat jadi app.rs16 (seharusnya 192.168.4.1). Akibat: koneksi "putus" dan
+"Pasang ke alat" gagal: Unable to resolve host "app.rs16".
+
+Cara pasang perbaikan (Android Studio):
+1. Buka proyek RS16RaceSpeed.
+2. Ganti file  app/src/main/assets/index.html        dengan index.html di folder ini.
+3. Ganti file  app/src/main/assets/web_version.txt    dengan web_version.txt di folder ini (1.1.2).
+4. (Disarankan) app/build.gradle: versionCode 3, versionName "1.1.2";
+   Config.java: APP_VERSION = "1.1.2".
+5. Build -> Build APK, pasang ke HP (timpa aplikasi lama).
+
+Perubahan hanya 3 baris: APP_VER = '1.1.2', dan onDevicePage() + init() tidak lagi berlaku saat dibuka dari APK.

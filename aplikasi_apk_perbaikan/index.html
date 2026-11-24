@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#06102a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>RS16 Race Speed</title>
+<style>
+:root{--bg:#040a18;--panel:rgba(255,255,255,.045);--panel2:rgba(255,255,255,.07);--line:rgba(190,215,255,.14);--txt:#f4f8ff;--dim:#8fa3c4;--red:#2f7bff;--red2:#7cc0ff;--ice:#cfe6ff;--navy:#0a1e46;--good:#2bd47f;--bad:#ff5468;--best:#b58cff;
+ --chrome:linear-gradient(180deg,#ffffff 0%,#dfe9f7 38%,#8fa6c6 52%,#e9f1fb 70%,#b9c9df 100%);
+ --gloss:linear-gradient(135deg,#3a8bff 0%,#1450e6 45%,#0a2a8a 100%);
+ --glass:linear-gradient(160deg,rgba(255,255,255,.085),rgba(255,255,255,.025));
+ --shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:"SF Pro Display","Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select{font:inherit;color:var(--txt);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:12px;padding:11px 13px;width:100%;user-select:text}
+select option{background:#0a1630}
+input:focus,select:focus{outline:none;border-color:var(--red2);box-shadow:0 0 0 3px rgba(47,123,255,.2)}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);
+ background:radial-gradient(120% 60% at 85% -10%,rgba(47,123,255,.28),transparent 60%),radial-gradient(90% 50% at -10% 110%,rgba(124,192,255,.12),transparent 60%),
+ repeating-linear-gradient(115deg,rgba(255,255,255,.012) 0 1px,transparent 1px 9px),linear-gradient(180deg,#071330,#040a18 60%,#030713)}
+.screen.act{display:flex}
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* logo */
+.logo{display:inline-flex;align-items:center;gap:5px;font-weight:900;font-style:italic;font-size:27px;line-height:1;letter-spacing:-.5px}
+.logo,.logo>.rs{background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent}
+.logo .n{-webkit-background-clip:border-box;background-clip:border-box;background:var(--gloss);color:#fff;padding:3px 8px 3px 6px;border-radius:5px;transform:skewX(-12deg);display:inline-block;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 0 0 1px rgba(255,255,255,.35),0 4px 14px rgba(47,123,255,.45)}
+.logo .chk{width:20px;height:18px;background:repeating-linear-gradient(115deg,#cfe6ff 0 2px,transparent 2px 5px);opacity:.9}
+.eyebrow{font-size:10.5px;letter-spacing:3.5px;text-transform:uppercase;color:var(--red2);font-weight:600}
+/* ---------- HOME ---------- */
+.hero{position:relative;padding:calc(env(safe-area-inset-top) + 18px) 20px 22px;overflow:hidden}
+.heroarc{position:absolute;right:-70px;top:30px;width:260px;height:260px;pointer-events:none;opacity:.9}
+.herotop{display:flex;align-items:center;justify-content:space-between;position:relative}
+.rider{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--ice);letter-spacing:.3px}
+.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:18px;font-weight:700;color:#fff;background:var(--gloss);box-shadow:0 0 0 2px rgba(255,255,255,.75),0 0 0 4px rgba(47,123,255,.35),0 6px 18px rgba(47,123,255,.4)}
+.hello{position:relative;margin-top:34px}
+.hello b{display:block;font-size:31px;font-weight:300;letter-spacing:-.5px;margin-top:8px;line-height:1.15}
+.hello b em{font-style:normal;font-weight:700;background:linear-gradient(90deg,#fff,#9fd0ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.statusbar{position:relative;margin:4px 18px 0;background:var(--glass);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:grid;grid-template-columns:repeat(3,1fr);padding:15px 6px}
+.statusbar div{text-align:center;border-right:1px solid var(--line)}.statusbar div:last-child{border:0}
+.statusbar b{display:block;font-size:21px;font-weight:600;color:#fff}.statusbar span{font-size:9.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase}
+.homebody{flex:1;overflow:auto;padding:20px 18px 10px;display:flex;flex-direction:column;gap:14px}
+.bigcard{display:flex;align-items:center;gap:16px;padding:20px;border-radius:24px;text-align:left;background:var(--glass);border:1px solid var(--line);box-shadow:var(--shadow);position:relative;overflow:hidden;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.bigcard .bi{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:28px;flex:none;color:#fff;background:radial-gradient(circle at 50% 35%,#1e5bd8,#0a1e55 75%);box-shadow:0 0 0 2px #dfe9f7,0 0 0 3px #7f95b6,0 0 0 5px rgba(255,255,255,.18),0 8px 20px rgba(0,0,0,.5)}
+.bigcard .bt{font-size:clamp(15px,4.6vw,19px);font-weight:700;letter-spacing:1.8px;white-space:nowrap}
+.bigcard .bs{font-size:12.5px;color:var(--dim);margin-top:5px;letter-spacing:.3px}
+.bigcard .chev{margin-left:auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:22px;border:1px solid var(--line);color:var(--ice)}
+.bigcard.primary{background:var(--gloss);border:1px solid rgba(255,255,255,.28);min-height:142px;box-shadow:0 18px 40px rgba(20,80,230,.45),inset 0 1px 0 rgba(255,255,255,.5)}
+.bigcard.primary::before{content:"";position:absolute;inset:0 0 55% 0;background:linear-gradient(180deg,rgba(255,255,255,.22),transparent);pointer-events:none}
+.bigcard.primary::after{content:"";position:absolute;top:0;bottom:0;width:60px;left:-80px;background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-20deg);animation:sheen 4.5s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%,70%{left:-80px}100%{left:120%}}
+.bigcard.primary .bs{color:rgba(255,255,255,.82)}.bigcard.primary .chev{background:#fff;color:#1450e6;border:0}
+.bigcard:active{transform:scale(.985)}
+.bottomnav{display:flex;margin:6px 14px 10px;padding:6px 4px;border-radius:22px;background:rgba(10,22,48,.75);border:1px solid var(--line);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--shadow)}
+.bottomnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);padding:7px 0;position:relative}
+.bottomnav svg.i{font-size:23px;color:var(--ice)}
+.linkdot{position:absolute;width:9px;height:9px;border-radius:50%;background:#4b5b78;border:2px solid #0a1630;left:calc(50% + 7px);top:5px}
+.linkdot.on{background:var(--good);box-shadow:0 0 8px var(--good)}
+.ver{font-size:10px;letter-spacing:2px;color:#5b6d8d;text-align:center;padding:4px 0 0;text-transform:uppercase}
+/* ---------- topbar ---------- */
+.topbar{display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top) + 10px) 12px 12px;min-height:60px;border-bottom:1px solid var(--line);background:rgba(6,14,34,.6);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.back{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:24px;line-height:1;color:#fff;display:grid;place-items:center;padding-bottom:3px;flex:none}
+.topbar .ttl{flex:1;font-weight:600;font-size:17px;letter-spacing:.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .act{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#fff;font-weight:700;padding:8px 14px;border-radius:999px;background:var(--gloss);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.modeswitch{display:flex;margin:16px 18px 6px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:16px;padding:4px}
+.modeswitch button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;font-size:13px;color:var(--dim)}
+.modeswitch button svg.i{font-size:19px}
+.modeswitch button.on{background:var(--gloss);color:#fff;box-shadow:0 6px 18px rgba(20,80,230,.4),inset 0 1px 0 rgba(255,255,255,.45)}
+.subtabs{display:flex;gap:8px;padding:10px 18px;overflow-x:auto}
+.subtabs button{padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:13px;font-weight:500;letter-spacing:.5px;color:var(--dim);white-space:nowrap}
+.subtabs button.on{background:#fff;border-color:#fff;color:#0a1e46;font-weight:700}
+.modelist{padding:10px 18px 24px;display:flex;flex-direction:column;gap:12px}
+.mode{display:flex;align-items:center;gap:15px;background:var(--glass);border:1px solid var(--line);border-radius:20px;padding:15px;text-align:left;box-shadow:var(--shadow)}
+.mode:active{border-color:var(--red2)}
+.mode .mi{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;flex:none;color:#fff;background:radial-gradient(circle at 50% 35%,#1e5bd8,#0a1e55 75%);box-shadow:0 0 0 2px #dfe9f7,0 0 0 3px #7f95b6,0 6px 14px rgba(0,0,0,.45)}
+.mode .mi svg{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+.mode .mt{font-weight:600;font-size:16.5px;letter-spacing:.3px}.mode .ms{font-size:12.5px;color:var(--dim);margin-top:3px}
+.mode .chev{margin-left:auto;color:var(--red2);font-size:22px}
+.card{width:calc(100% - 36px);border:1px solid rgba(124,192,255,.45);background:linear-gradient(135deg,rgba(47,123,255,.18),rgba(47,123,255,.04));border-radius:20px;margin:6px 18px;padding:16px;display:flex;align-items:center;gap:14px;font-size:16px;font-weight:600;letter-spacing:.3px;color:#fff;text-align:left;box-shadow:var(--shadow)}
+.card svg{width:46px;height:46px;padding:10px;border-radius:50%;background:var(--gloss);stroke:#fff;fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;flex:none;box-shadow:0 0 0 2px #dfe9f7,0 0 0 3px #7f95b6}
+.card small{display:block;font-weight:400;font-size:12.5px;color:var(--dim);margin-top:3px}
+.list{padding:4px 18px;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;align-items:center;gap:12px;padding:13px 14px;background:var(--glass);border:1px solid var(--line);border-radius:16px}
+.row:active{border-color:var(--red2)}
+.row .ic{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 50% 35%,#1e5bd8,#0a1e55 75%);color:#fff;font-size:18px;flex:none;box-shadow:0 0 0 1.5px #cfdcef}
+.row .m{flex:1;min-width:0}.row .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row .s{font-size:12px;color:var(--dim);margin-top:3px}
+.row .r{text-align:right;font-weight:700}
+.empty{padding:36px 24px;text-align:center;color:var(--dim);line-height:1.6}
+.fab{position:absolute;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));width:58px;height:58px;border-radius:50%;background:var(--gloss);display:grid;place-items:center;font-size:24px;color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.7),0 10px 24px rgba(20,80,230,.5)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 16px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid var(--line);font-weight:600;letter-spacing:.5px;color:#fff}
+.btn.red{background:var(--gloss);border-color:rgba(255,255,255,.3);box-shadow:0 8px 20px rgba(20,80,230,.4),inset 0 1px 0 rgba(255,255,255,.45)}
+.btn.ghost{background:none}
+.btn.sm{padding:8px 12px;font-size:13px;border-radius:12px}
+.btns{display:flex;gap:10px;flex-wrap:wrap}.btns .btn{flex:1}
+.pad{padding:16px 18px}
+h3{font-size:10.5px;letter-spacing:3px;color:var(--red2);text-transform:uppercase;margin:22px 0 10px;font-weight:600}
+.field{margin-bottom:14px}.field label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px;letter-spacing:.5px}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{padding:12px 16px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-weight:600;color:#fff}
+.chip.on,.chip:active{background:var(--gloss);border-color:rgba(255,255,255,.3)}
+.seg{display:flex;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;padding:4px;margin:14px 18px 4px}
+.seg button{flex:1;padding:9px;border-radius:10px;color:var(--dim);font-weight:600;letter-spacing:1px;font-size:13px;text-transform:uppercase}
+.seg button.on{background:#fff;color:#0a1e46}
+.sheetbg{position:fixed;inset:0;background:rgba(2,6,16,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:none;z-index:50}
+.sheetbg.act{display:block}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(180deg,#0f2148,#081430);border-top:1px solid rgba(190,215,255,.25);border-radius:26px 26px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto;box-shadow:0 -20px 50px rgba(0,0,0,.5)}
+.sheet::before{content:"";display:block;width:44px;height:4px;border-radius:3px;background:rgba(255,255,255,.25);margin:-8px auto 16px}
+.sheet h2{font-size:18px;font-weight:600;margin-bottom:16px;letter-spacing:.3px}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 72px);transform:translateX(-50%);background:rgba(255,255,255,.95);color:#0a1e46;font-weight:600;padding:11px 18px;border-radius:14px;z-index:99;font-size:13.5px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.toast.on{opacity:1}
+/* ---------- live track ---------- */
+.stat{display:flex;gap:12px;align-items:center;font-size:11.5px;letter-spacing:.5px;color:var(--dim);padding:9px 16px}
+.stat .d{width:8px;height:8px;border-radius:50%;background:#4b5b78;display:inline-block;margin-right:5px}.stat .d.on{background:var(--good);box-shadow:0 0 8px var(--good)}
+.dash{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;gap:10px;padding:0 14px 12px;overflow:hidden;min-height:0}
+.lapblk{text-align:center}
+.lapblk .k{font-size:11px;letter-spacing:4px;color:var(--red2);text-transform:uppercase;font-weight:600}
+.lapblk .lt{font-size:min(17vw,96px);font-weight:800;letter-spacing:-2px;line-height:1.05}
+.dlblk{text-align:center;font-size:min(16vw,84px);font-weight:900;border-radius:24px;padding:2px 0;line-height:1.2;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.dlblk.g{background:var(--good);border-color:var(--good);color:#fff;box-shadow:0 0 30px rgba(43,212,127,.45)}
+.dlblk.b{background:var(--bad);border-color:var(--bad);color:#fff;box-shadow:0 0 30px rgba(255,84,104,.45)}
+.dlblk.n{color:rgba(255,255,255,.3)}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.duo .box{padding:10px 14px;text-align:center}.duo .box .k{font-size:11px}.duo .box .v{font-size:min(8.5vw,36px);font-weight:800}
+.more{display:none;flex-direction:column;gap:9px;flex:1;min-height:0}
+.dash.det{justify-content:flex-start}
+.dash.det .more{display:flex}
+.dash.det .bigspd .v{font-size:min(24vw,140px)}.dash.det .lapblk .lt{font-size:min(11vw,58px)}.dash.det .dlblk{font-size:min(9vw,48px)}.dash.det .duo .box .v{font-size:22px}
+.more .lower{flex:1}
+.more .trio:first-child{grid-template-columns:1fr}
+.detbtn{font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--ice)}
+.detbtn.on{background:#fff;color:#0a1e46}
+.bigspd{display:flex;align-items:baseline;justify-content:center;gap:8px}
+.bigspd .v{font-size:min(40vw,230px);font-weight:800;line-height:.9;letter-spacing:-5px;font-style:italic;background:linear-gradient(180deg,#ffffff 30%,#9fc6ff);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 24px rgba(47,123,255,.45))}
+.bigspd .u{color:var(--red2);font-size:12px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
+.laprow{display:flex;justify-content:space-between;align-items:center;border-radius:20px;padding:11px 16px;background:var(--gloss);border:1px solid rgba(255,255,255,.28);box-shadow:0 12px 28px rgba(20,80,230,.35),inset 0 1px 0 rgba(255,255,255,.45)}
+.laprow .lt{font-size:min(11vw,50px);font-weight:700;letter-spacing:-1px}
+.laprow .dl{font-size:min(8.5vw,38px);font-weight:800;padding:3px 12px;border-radius:12px}
+.dl.g{color:#fff;background:var(--good);box-shadow:0 0 18px rgba(43,212,127,.5)}.dl.b{color:#fff;background:var(--bad);box-shadow:0 0 18px rgba(255,84,104,.5)}.dl.n{color:rgba(255,255,255,.6)}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.box{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:9px 11px}
+.box .k{font-size:9.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;font-weight:600}
+.box .v{font-size:19px;font-weight:700;margin-top:3px}
+.box.best .v{color:var(--best)}
+.lower{display:grid;grid-template-columns:1fr 1fr;gap:9px;min-height:0}
+.lower canvas{width:100%;height:100%;background:var(--glass);border:1px solid var(--line);border-radius:16px;display:block;min-height:140px}
+.flash{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:radial-gradient(circle at 50% 45%,rgba(20,80,230,.95),rgba(4,10,24,.97) 70%);z-index:5;gap:8px}
+.flash.act{display:flex}
+.flash .a{font-size:12px;letter-spacing:5px;color:var(--ice)}.flash .b{font-size:min(17vw,90px);font-weight:800;font-style:italic}.flash .c{font-size:26px;font-weight:700}
+.runbar{display:flex;gap:8px;padding:8px 14px}.runbar .btn{flex:1}
+/* ---------- drag ---------- */
+.dstate{margin:18px auto 0;padding:8px 22px;border-radius:999px;font-weight:700;letter-spacing:3px;font-size:12px;border:1px solid var(--line);background:rgba(255,255,255,.06)}
+.dstate.wait{color:#ffd27a;border-color:rgba(255,210,122,.4)}.dstate.armed{background:var(--good);border-color:var(--good);color:#fff;box-shadow:0 0 22px rgba(43,212,127,.55)}.dstate.run{background:var(--gloss);color:#fff;box-shadow:0 0 22px rgba(47,123,255,.6)}.dstate.done{background:#fff;color:#0a1e46}.dstate.fail{color:var(--dim)}
+.dtime{text-align:center;font-size:min(21vw,116px);font-weight:800;font-style:italic;letter-spacing:-4px;margin-top:8px;background:linear-gradient(180deg,#fff 30%,#9fc6ff);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 24px rgba(47,123,255,.45))}
+.dsub{display:flex;justify-content:center;gap:28px;color:var(--dim);font-size:10px;letter-spacing:2px;text-transform:uppercase}
+.dsub b{color:#fff;font-size:22px;display:block;text-align:center;letter-spacing:0}
+table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:14.5px;background:var(--glass);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+table.t th{font-size:9.5px;color:var(--dim);text-align:left;font-weight:600;padding:10px 8px;border-bottom:1px solid var(--line);letter-spacing:2px;text-transform:uppercase}
+table.t td{padding:11px 8px;border-bottom:1px solid rgba(190,215,255,.07)}
+table.t tr:last-child td{border-bottom:0}
+table.t tr.sel td{background:rgba(47,123,255,.18)}
+table.t .best{color:var(--best);font-weight:700}
+table.t .r{text-align:right}
+.cv{width:100%;display:block;background:var(--glass);border:1px solid var(--line);border-radius:16px}
+.readout{font-size:12.5px;color:var(--dim);padding:6px 2px;min-height:24px}
+.mapwrap{position:relative;margin-top:12px;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+.satmap{width:100%;display:block;touch-action:none;background:#0a1428}
+.scrubvals{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;margin-top:12px}
+.sv{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:8px 10px;text-align:center}
+.sv span{display:block;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;color:var(--dim);font-weight:600}
+.sv b{display:block;font-size:17px;font-weight:800;margin-top:2px;white-space:nowrap}
+.sv.g b{color:var(--good)}.sv.b b{color:var(--bad)}
+.scrub{width:100%;margin:14px 0 4px;accent-color:#2f7bff;height:28px;padding:0;border:0;background:none}
+.spdbar{display:inline-block;width:70px;height:6px;border-radius:3px;background:linear-gradient(90deg,#2563eb,#10b981,#f59e0b,#e5383b)}
+.fwprog{margin-top:14px}.fwprog .bar{height:10px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden}.fwprog .bar i{display:block;height:100%;width:0;background:var(--gloss);transition:width .2s}
+.kvrow{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:14px}.kvrow span{color:var(--dim)}.kvrow b{text-align:right}
+.upbtns{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.legend{display:flex;gap:14px;font-size:11.5px;color:var(--dim);flex-wrap:wrap}.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.note{font-size:12.5px;color:var(--dim);line-height:1.6}
+.big3{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:12px 0}
+@media (orientation:landscape) and (max-height:500px){
+ .dash{display:grid;grid-template-columns:1.1fr 1fr;align-content:center;gap:8px 16px}
+ .bigspd{grid-row:1/4}.bigspd .v{font-size:38vh}
+ .lapblk .lt{font-size:13vh}.dlblk{font-size:11vh}.duo .box .v{font-size:6vh}
+ .more{grid-column:1/3}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= HOME ================= -->
+<div class="screen act" id="s-home">
+  <div class="hero">
+    <svg class="heroarc" viewBox="0 0 200 200"><defs><linearGradient id="ga" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2f7bff" stop-opacity="0"/><stop offset="1" stop-color="#9fd0ff"/></linearGradient></defs><g stroke="rgba(207,230,255,.22)" stroke-width="1.4"><line x1="50.5" y1="149.5" x2="43.4" y2="156.6"/><line x1="39.4" y1="142.4" x2="34.5" y2="145.9"/><line x1="32.9" y1="131.3" x2="27.5" y2="133.8"/><line x1="32.4" y1="118.1" x2="22.7" y2="120.7"/><line x1="26.3" y1="106.4" x2="20.3" y2="107.0"/><line x1="26.3" y1="93.6" x2="20.3" y2="93.0"/><line x1="32.4" y1="81.9" x2="22.7" y2="79.3"/><line x1="32.9" y1="68.7" x2="27.5" y2="66.2"/><line x1="39.4" y1="57.6" x2="34.5" y2="54.1"/><line x1="50.5" y1="50.5" x2="43.4" y2="43.4"/><line x1="57.6" y1="39.4" x2="54.1" y2="34.5"/><line x1="68.7" y1="32.9" x2="66.2" y2="27.5"/><line x1="81.9" y1="32.4" x2="79.3" y2="22.7"/><line x1="93.6" y1="26.3" x2="93.0" y2="20.3"/><line x1="106.4" y1="26.3" x2="107.0" y2="20.3"/><line x1="118.1" y1="32.4" x2="120.7" y2="22.7"/><line x1="131.3" y1="32.9" x2="133.8" y2="27.5"/><line x1="142.4" y1="39.4" x2="145.9" y2="34.5"/><line x1="149.5" y1="50.5" x2="156.6" y2="43.4"/><line x1="160.6" y1="57.6" x2="165.5" y2="54.1"/><line x1="167.1" y1="68.7" x2="172.5" y2="66.2"/><line x1="167.6" y1="81.9" x2="177.3" y2="79.3"/><line x1="173.7" y1="93.6" x2="179.7" y2="93.0"/><line x1="173.7" y1="106.4" x2="179.7" y2="107.0"/><line x1="167.6" y1="118.1" x2="177.3" y2="120.7"/><line x1="167.1" y1="131.3" x2="172.5" y2="133.8"/><line x1="160.6" y1="142.4" x2="165.5" y2="145.9"/><line x1="149.5" y1="149.5" x2="156.6" y2="156.6"/></g><circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,.06)"/><path d="M50.5 149.5A70 70 0 1 1 166 75" fill="none" stroke="url(#ga)" stroke-width="3" stroke-linecap="round"/><circle cx="166" cy="75" r="4" fill="#fff" style="filter:drop-shadow(0 0 6px #7cc0ff)"/></svg>
+    <div class="herotop">
+      <div class="logo">RS<span class="n">16</span><span class="chk"></span></div>
+      <button class="rider" onclick="go('s-settings')"><span id="riderName">Rider</span><span class="avatar" id="riderInit">R</span></button>
+    </div>
+    <div class="hello"><div class="eyebrow">Race Speed · Data Logger</div><b>Siap ke lintasan,<br><em id="riderName2">Rider</em></b></div>
+  </div>
+  <div class="statusbar num">
+    <div><b id="hmConn">Off</b><span>Alat</span></div>
+    <div><b id="hmSat">--</b><span>Satelit</span></div>
+    <div><b id="hmSess">0</b><span>Sesi</span></div>
+  </div>
+  <div class="homebody">
+    <button class="bigcard primary" onclick="go('s-select')">
+      <div class="bi"><svg class="i" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h13l-2.5 4L18 12H5" fill="currentColor" fill-opacity=".25"/></svg></div>
+      <div><div class="bt">MULAI BALAPAN</div><div class="bs">Mode Speed & Track</div></div><span class="chev">›</span></button>
+    <button class="bigcard" onclick="openHistory()">
+      <div class="bi"><svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></div>
+      <div><div class="bt">RIWAYAT</div><div class="bs">Sesi, lap, peta & grafik</div></div><span class="chev">›</span></button>
+  </div>
+  <div class="ver" id="homeVer">RS16 Race Speed</div>
+  <nav class="bottomnav">
+    <button onclick="openTrophy()"><svg class="i" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3M12 14v4M8 21h8"/></svg>Rekor</button>
+    <button onclick="go('s-link')"><svg class="i" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/></svg>Koneksi<span class="linkdot" id="homeDot"></span></button>
+    <button onclick="go('s-settings')"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Pengaturan</button>
+    <button onclick="go('s-info')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>Info</button>
+  </nav>
+</div>
+
+<!-- ================= SELECT (Mulai) ================= -->
+<div class="screen" id="s-select">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Pilih mode</div><button class="act" onclick="go('s-link')">Koneksi</button></div>
+  <div class="modeswitch">
+    <button id="tabSpeed" class="on" onclick="selTab('speed')"><svg class="i" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/></svg>Speed</button>
+    <button id="tabTrack" onclick="selTab('track')"><svg class="i" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h13l-2.5 4L18 12H5"/></svg>Track</button>
+  </div>
+  <div class="scroll" id="paneSpeed">
+    <div class="modelist">
+      <button class="mode" onclick="dragPick('speed')"><div class="mi"><svg viewBox="0 0 64 64"><path d="M10 46a24 24 0 1 1 44 0"/><path d="M32 40l12-14"/><circle cx="32" cy="40" r="3"/></svg></div><div><div class="mt">0 – Kecepatan</div><div class="ms">Waktu dari diam sampai 60/100/150 km/h</div></div><span class="chev">›</span></button>
+      <button class="mode" onclick="dragPick('dist')"><div class="mi"><svg viewBox="0 0 64 64"><path d="M8 44h48M8 36v16M56 36v16"/><path d="M20 26l-6-6 6-6M44 14l6 6-6 6M14 20h36"/></svg></div><div><div class="mt">0 – Jarak</div><div class="ms">100 m, 201 m, 402 m, 1000 m</div></div><span class="chev">›</span></button>
+      <button class="mode" onclick="dragPick('s0s')"><div class="mi"><svg viewBox="0 0 64 64"><path d="M6 52l16-34 10 20 10-20 16 34"/></svg></div><div><div class="mt">0 – Speed – 0</div><div class="ms">Akselerasi + pengereman sampai berhenti</div></div><span class="chev">›</span></button>
+      <button class="mode" onclick="startDrag({mode:'quarter',target:402.34})"><div class="mi"><svg viewBox="0 0 64 64"><rect x="18" y="6" width="28" height="52" rx="8"/><circle cx="32" cy="18" r="4"/><circle cx="32" cy="32" r="4"/><circle cx="32" cy="46" r="4"/></svg></div><div><div class="mt">Drag 1/4 mile</div><div class="ms">60 ft, 100 m, 1/8 mile, trap speed</div></div><span class="chev">›</span></button>
+      <button class="mode" onclick="dragRecent()"><div class="mi"><svg viewBox="0 0 64 64"><path d="M14 40a20 20 0 1 0 2-20"/><path d="M8 18l7 3-1 8"/><path d="M32 18v15l-6 6"/></svg></div><div><div class="mt">Terakhir dipakai</div><div class="ms">Ulangi mode sebelumnya</div></div><span class="chev">›</span></button>
+    </div>
+  </div>
+  <div class="scroll" id="paneTrack" style="display:none;position:relative">
+    <div class="subtabs">
+      <button data-st="nearby" onclick="trackSub('nearby')">Terdekat</button>
+      <button data-st="recent" onclick="trackSub('recent')">Terakhir</button>
+      <button data-st="all" onclick="trackSub('all')">Semua</button>
+      <button data-st="sim" onclick="trackSub('sim')">Simulasi</button>
+    </div>
+    <div id="trackBody"></div>
+  </div>
+  <button class="fab" id="fabSearch" style="display:none" onclick="trackSearch()" aria-label="Cari"><svg class="i" viewBox="0 0 24 24" style="stroke-width:3"><circle cx="10" cy="10" r="7"/><path d="M15 15l6 6"/></svg></button>
+</div>
+
+<!-- ================= DRAG RUN ================= -->
+<div class="screen" id="s-drag">
+  <div class="topbar"><button class="back" onclick="stopDrag()">‹</button><div class="ttl" id="dragTitle">0-100 km/h</div><span class="stat" style="padding:0"><span><span class="d" id="dragDot"></span><span id="dragGps">--</span></span></span></div>
+  <div class="scroll">
+    <div style="text-align:center"><div class="dstate wait" id="dState">BERHENTI DULU</div></div>
+    <div class="dtime num" id="dTime">0.00</div>
+    <div class="dsub num"><div><b id="dSpd">0</b>km/h</div><div><b id="dDist">0</b>meter</div><div><b id="dMax">0</b>top</div></div>
+    <div class="pad">
+      <div id="dResult"></div>
+      <table class="t num" id="dMs"></table>
+      <canvas class="cv" id="dChart" style="height:180px;margin-top:12px;display:none"></canvas>
+      <div class="btns" style="margin-top:14px"><button class="btn red" onclick="retryDrag()">Ulangi</button><button class="btn" onclick="stopDrag()">Selesai</button></div>
+      <p class="note" style="margin-top:12px">Berhenti total sampai status hijau <b>SIAP</b>, lalu gas. Waktu mulai dihitung otomatis saat motor bergerak. Hasil tersimpan otomatis di Riwayat.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TRACK RUN ================= -->
+<div class="screen" id="s-run" style="position:fixed">
+  <div class="topbar"><button class="back" onclick="stopRun()">‹</button><div class="ttl" id="runTitle">Track</div><button class="act" onclick="stopRun()">STOP</button></div>
+  <div class="stat"><span><span class="d" id="runDot"></span><span id="runConn">--</span></span><span id="runSat">Sat --</span><span id="runHz">-- Hz</span><span id="runLapN" style="margin-left:auto">Lap --</span><button class="detbtn" id="detBtn" onclick="toggleDetail()">Detail</button></div>
+  <div class="dash" id="dash">
+    <div class="bigspd"><span class="v num" id="rSpd">0</span><span class="u">km/h</span></div>
+    <div class="lapblk"><div class="k" id="rLapLbl">Lap</div><div class="lt num" id="rLap">--:--.---</div></div>
+    <div class="dlblk n num" id="rDelta">±0.00</div>
+    <div class="duo">
+      <div class="box"><div class="k">Last</div><div class="v num" id="rLast">--</div></div>
+      <div class="box best"><div class="k">Best</div><div class="v num" id="rBest">--</div></div>
+    </div>
+    <div class="more">
+      <div class="trio"><div class="box"><div class="k">Prediksi</div><div class="v num" id="rPred">--</div></div></div>
+      <div class="trio" id="rSectors"></div>
+      <div class="lower"><canvas id="rMap"></canvas><canvas id="rG"></canvas></div>
+    </div>
+  </div>
+  <div class="runbar" id="runGateBar"><button class="btn sm" onclick="setGateHere('F')">🏁 Finish di sini</button><button class="btn sm" onclick="setGateHere('S')">＋ Sektor di sini</button></div>
+  <div class="flash" id="flash"><div class="a" id="flA">LAP 3</div><div class="b num" id="flB">1:02.345</div><div class="c num" id="flC">+0.12</div></div>
+</div>
+
+<!-- ================= TRACK EDITOR ================= -->
+<div class="screen" id="s-edit">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Atur garis lintasan</div><button class="act" onclick="saveEdit()">SIMPAN</button></div>
+  <div class="pad" style="padding-bottom:6px"><input id="edName" placeholder="Nama track (mis. Sentul Karting)"></div>
+  <div class="seg"><button id="edF" class="on" onclick="edMode('F')">🏁 Finish</button><button id="edS" onclick="edMode('S')">＋ Sektor</button><button onclick="edUndo()">↶ Hapus sektor</button></div>
+  <div style="flex:1;position:relative;margin:0 12px 12px"><canvas id="edMap" style="position:absolute;inset:0;width:100%;height:100%;background:var(--panel);border-radius:12px;touch-action:none"></canvas></div>
+  <p class="note" style="padding:0 16px 12px">Ketuk jalur untuk menaruh garis. Arah garis mengikuti arah jalan motor di titik itu. Geser 1 jari untuk pindah, 2 jari untuk zoom.</p>
+</div>
+
+<!-- ================= HISTORY ================= -->
+<div class="screen" id="s-history">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Riwayat</div><button class="act" onclick="$('#impFile').click()">IMPORT</button></div>
+  <div class="subtabs"><button data-h="all" class="on" onclick="histFilter('all')">Semua</button><button data-h="track" onclick="histFilter('track')">Track</button><button data-h="drag" onclick="histFilter('drag')">Speed</button></div>
+  <div class="scroll"><div class="list" id="histList"></div></div>
+  <input type="file" id="impFile" accept=".csv,.txt,.log,.json" style="display:none" onchange="importFile(this.files[0]);this.value=''">
+</div>
+
+<!-- ================= DETAIL ================= -->
+<div class="screen" id="s-detail">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl" id="detTitle">Sesi</div><button class="act" onclick="detMenu()">⋯</button></div>
+  <div id="detSeg" class="seg"><button data-d="lap" class="on" onclick="detTab('lap')">Lap</button><button data-d="map" onclick="detTab('map')">Peta</button><button data-d="graph" onclick="detTab('graph')">Grafik</button></div>
+  <div class="scroll" id="detBody"></div>
+</div>
+
+<!-- ================= TROPHY ================= -->
+<div class="screen" id="s-trophy">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Rekor terbaik</div></div>
+  <div class="scroll" id="trophyBody"></div>
+</div>
+
+<!-- ================= LINK ================= -->
+<div class="screen" id="s-link">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Koneksi alat</div></div>
+  <div class="scroll pad">
+    <div class="box" style="padding:14px"><div class="k">Status</div><div class="v" id="lkStatus" style="font-size:18px">Belum terhubung</div>
+      <div class="big3 num"><div><div class="k" style="font-size:11px;color:var(--dim)">SATELIT</div><b id="lkSat">--</b></div><div><div class="k" style="font-size:11px;color:var(--dim)">RATE</div><b id="lkHz">--</b></div><div><div class="k" style="font-size:11px;color:var(--dim)">SPEED</div><b id="lkSpd">--</b></div></div>
+      <div class="note num" id="lkPos">Posisi: --</div></div>
+    <h3>Hubungkan</h3>
+    <div class="btns"><button class="btn red" onclick="Conn.ble()">Bluetooth</button><button class="btn" onclick="Conn.ws($('#wsUrl').value)">WiFi</button><button class="btn" onclick="Conn.sim()">Simulasi</button></div>
+    <div class="field" style="margin-top:12px"><label>Alamat WiFi alat (WebSocket)</label><input id="wsUrl" value="ws://192.168.4.1:81/"></div>
+    <button class="btn ghost" style="width:100%" onclick="Conn.close()">Putuskan</button>
+    <h3>Rate GPS</h3>
+    <div class="btns"><button class="btn" onclick="sendHz(16)">16,7 Hz</button><button class="btn" onclick="sendHz(25)">25 Hz</button></div>
+    <h3>Cara pakai</h3>
+    <p class="note"><b>WiFi:</b> di alat buka menu <b>APPLICATION → WI-FI</b> lalu tekan OK sampai ON. Sambungkan HP ke WiFi <b>RS16_0016</b> (password <b>RS160016</b>).<br>• <b>Aplikasi APK RS16:</b> buka aplikasi, tekan tombol <b>WiFi</b> di atas.<br>• <b>Tanpa APK:</b> buka <b>http://192.168.4.1</b> di Chrome, aplikasi terbuka dari alat dan tersambung otomatis.<br>Kalau Android bilang "tidak ada internet", pilih tetap tersambung.<br><b>Bluetooth:</b> butuh firmware dengan modul BLE (belum aktif di V36.9).<br><b>Simulasi:</b> data buatan untuk mencoba aplikasi tanpa alat.</p>
+  </div>
+</div>
+
+<!-- ================= SETTINGS ================= -->
+<div class="screen" id="s-settings">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Pengaturan</div></div>
+  <div class="scroll pad">
+    <div class="field"><label>Nama rider</label><input id="setName" onchange="saveSettings()"></div>
+    <div class="field"><label>Lebar garis finish/sektor (meter)</label><input id="setGateW" type="number" min="10" max="100" onchange="saveSettings()"></div>
+    <div class="field"><label>Radius "Nearby" (km)</label><input id="setNear" type="number" min="1" max="200" onchange="saveSettings()"></div>
+    <div class="field"><label>Peta satelit di Riwayat (butuh internet)</label><select id="setSat" onchange="saveSettings()"><option value="1">Ya</option><option value="0">Tidak</option></select></div>
+    <div class="field"><label>Layar tetap menyala saat balapan</label><select id="setWake" onchange="saveSettings()"><option value="1">Ya</option><option value="0">Tidak</option></select></div>
+    <h3>Update</h3>
+    <button class="btn" style="width:100%" onclick="go('s-update')">Update aplikasi & firmware alat</button>
+    <h3>Data</h3>
+    <div class="btns"><button class="btn" onclick="backupAll()">Backup semua</button><button class="btn" onclick="$('#impFile2').click()">Restore</button></div>
+    <input type="file" id="impFile2" accept=".json" style="display:none" onchange="importFile(this.files[0]);this.value=''">
+    <button class="btn ghost" style="width:100%;margin-top:10px;color:var(--bad)" onclick="wipeAll()">Hapus semua data</button>
+    <p class="note" style="margin-top:12px" id="setUsage"></p>
+  </div>
+</div>
+
+<!-- ================= UPDATE ================= -->
+<div class="screen" id="s-update">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Update aplikasi & alat</div></div>
+  <div class="scroll pad">
+    <h3>Tampilan aplikasi</h3>
+    <div class="box" style="padding:14px" id="upWeb"></div>
+    <h3>Firmware alat RS16</h3>
+    <div class="box" style="padding:14px" id="upFw"></div>
+    <div class="fwprog" id="fwProg" style="display:none"><div class="bar"><i id="fwBar"></i></div><div class="note num" id="fwMsg">0%</div></div>
+    <div class="field" style="margin-top:14px"><label>Password update alat (sama dengan password WiFi alat)</label><input id="otaPass" onchange="S.set.otaPass=this.value;store.set('settings',S.set)"></div>
+    <p class="note">Selama update: jangan matikan alat dan jangan jauhkan HP. Kalau update gagal atau terputus, alat tetap memakai firmware lama. Setelah berhasil, alat restart sendiri.</p>
+    <input type="file" id="fwFile" accept=".bin,application/octet-stream" style="display:none" onchange="fwPickedBrowser(this.files[0]);this.value=''">
+  </div>
+</div>
+
+<!-- ================= INFO ================= -->
+<div class="screen" id="s-info">
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Tentang</div></div>
+  <div class="scroll pad">
+    <div class="logo" style="font-size:44px;justify-content:center;margin:20px 0"><span class="rs">RS</span><span class="n">16</span><span class="chk"></span></div>
+    <p style="text-align:center;font-weight:700" id="infoVer">RS16 Race Speed</p>
+    <div style="text-align:center;margin-top:12px"><button class="btn red" onclick="go('s-update')">Update aplikasi & alat</button></div>
+    <h3>Mode</h3>
+    <p class="note"><b>Speed:</b> 0-kecepatan, 0-jarak, 0-speed-0, 0-1/4 mile (60 ft, 1/8, trap speed).<br><b>Track:</b> lap timer GPS dengan garis finish & sektor, delta live terhadap best lap, prediksi, peta, grafik kecepatan, delta, G-force.</p>
+    <h3>Format data alat</h3>
+    <p class="note num">RS,t_ms,lat,lon,kmh,heading,sat,gLat,gLong<br>Contoh: RS,123456,-6.5351234,106.8561234,123.4,271.3,14,0.85,-0.32</p>
+    <p class="note" style="margin-top:8px">File log CSV dengan format yang sama dari microSD bisa dibuka lewat Riwayat → Import.</p>
+  </div>
+</div>
+
+<div class="sheetbg" id="sheetBg" onclick="if(event.target===this){askRes?askDone(false):closeSheet()}"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ================= RS16 CORE (tanpa DOM) =================
+const R = 6371000, RAD = Math.PI / 180;
+function rel(a, b) { return [(b.lon - a.lon) * RAD * R * Math.cos(a.lat * RAD), (b.lat - a.lat) * RAD * R]; }
+function dist(a, b) { const v = rel(a, b); return Math.hypot(v[0], v[1]); }
+
+// Format data dari alat: "RS,t_ms,lat,lon,kmh,heading,sats,gLat,gLong"
+function parseLine(s) {
+  s = s.trim(); if (!s) return null;
+  const f = s.split(','); let o = 0;
+  if (f[0] === 'RS') o = 1; else if (isNaN(+f[0])) return null;
+  if (f.length - o < 8) return null;
+  const v = f.slice(o, o + 8).map(Number);
+  if (v.some(x => isNaN(x))) return null;
+  const [t, lat, lon, spd, hdg, sat, gx, gy] = v;
+  if (lat === 0 && lon === 0) return { nofix: true, sat, t };
+  return { t, lat, lon, spd, hdg, sat, gx, gy };
+}
+
+// ---------- Garis finish / sektor ----------
+function prepGate(g) {
+  const h = [Math.sin(g.hdg * RAD), Math.cos(g.hdg * RAD)], pp = [h[1], -h[0]], w = (g.w || 30) / 2;
+  return Object.assign({}, g, { h, A: [pp[0] * w, pp[1] * w], B: [-pp[0] * w, -pp[1] * w] });
+}
+function crossT(g, p, q) {
+  const P = rel(g, p); if (Math.hypot(P[0], P[1]) > 300) return -1;
+  const Q = rel(g, q), r = [Q[0] - P[0], Q[1] - P[1]];
+  if (r[0] * g.h[0] + r[1] * g.h[1] <= 0) return -1; // harus searah
+  const s = [g.B[0] - g.A[0], g.B[1] - g.A[1]], den = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(den) < 1e-9) return -1;
+  const ap = [g.A[0] - P[0], g.A[1] - P[1]];
+  const t = (ap[0] * s[1] - ap[1] * s[0]) / den, u = (ap[0] * r[1] - ap[1] * r[0]) / den;
+  return (t >= 0 && t <= 1 && u >= 0 && u <= 1) ? t : -1;
+}
+function headingAt(pts, i) {
+  const a = pts[Math.max(0, i - 3)], b = pts[Math.min(pts.length - 1, i + 3)];
+  const v = rel(a, b); return (Math.atan2(v[0], v[1]) / RAD + 360) % 360;
+}
+
+// ---------- Lap timer ----------
+class Proc {
+  constructor(track) { this.pts = []; this.tOff = 0; this.setTrack(track); this.reset(); }
+  setTrack(track) { this.gates = (track && track.gates || []).map(prepGate); }
+  reset() { this.laps = []; this.cur = null; this.lastFin = -1e12; this.best = null; this.bestProf = null; }
+  push(p) {
+    const prev = this.pts[this.pts.length - 1];
+    if (prev) {
+      let t = p.t + this.tOff;
+      if (t < prev.t - 1000) { this.tOff += prev.t - p.t + 40; t = prev.t + 40; } // alat restart
+      if (t <= prev.t) return false;
+      p.t = t; p.d = prev.d + dist(prev, p);
+    } else { p.t += this.tOff; p.d = 0; }
+    this.pts.push(p);
+    if (prev) this.check(prev, p, this.pts.length - 1);
+    return true;
+  }
+  rebuild(track) { this.setTrack(track); this.reset(); const pts = this.pts; this.pts = []; this.tOff = 0; for (const p of pts) this.push(p); }
+  check(a, b, i) {
+    for (let gi = 0; gi < this.gates.length; gi++) {
+      const t = crossT(this.gates[gi], a, b); if (t < 0) continue;
+      const tc = a.t + t * (b.t - a.t), dc = a.d + t * (b.d - a.d);
+      if (gi === 0) this.finish(tc, dc, i); else this.sector(gi, tc);
+    }
+  }
+  finish(tc, dc, i) {
+    if (tc - this.lastFin < 8000) return;
+    this.lastFin = tc; let done = null;
+    const nS = this.gates.length - 1;
+    if (this.cur) {
+      const c = this.cur, time = tc - c.t0, sum = c.splits.reduce((s, x) => s + x, 0);
+      const sectors = nS > 0 ? (c.splits.length === nS ? [...c.splits, time - sum] : Array(nS + 1).fill(null)) : [];
+      let vmax = 0; for (let k = c.i0; k < i; k++) vmax = Math.max(vmax, this.pts[k].spd);
+      done = { n: this.laps.length + 1, t0: c.t0, t1: tc, d0: c.d0, d1: dc, i0: c.i0, i1: i, time, sectors, vmax };
+      this.laps.push(done);
+      if (!this.best || time < this.best.time) { this.best = done; this.bestProf = this.profile(done); }
+    }
+    this.cur = { t0: tc, d0: dc, i0: i, splits: [], lastSplit: tc };
+    if (done && this.onLap) this.onLap(done);
+  }
+  sector(gi, tc) { const c = this.cur; if (!c || c.splits.length !== gi - 1) return; c.splits.push(tc - c.lastSplit); c.lastSplit = tc; if (this.onSector) this.onSector(gi, tc - c.t0); }
+  profile(lap) {
+    const d = [0], t = [0];
+    for (let k = lap.i0; k < lap.i1; k++) { const p = this.pts[k]; d.push(p.d - lap.d0); t.push(p.t - lap.t0); }
+    d.push(lap.d1 - lap.d0); t.push(lap.time); return { d, t };
+  }
+  live() {
+    const p = this.pts[this.pts.length - 1]; if (!p || !this.cur) return null;
+    const lt = p.t - this.cur.t0, ld = p.d - this.cur.d0;
+    const delta = this.bestProf ? lt - interp(this.bestProf.d, this.bestProf.t, ld) : null;
+    return { lapTime: lt, lapDist: ld, delta, splits: this.cur.splits };
+  }
+  theoBest() {
+    const n = this.gates.length; if (n < 2 || !this.laps.length) return null; let s = 0;
+    for (let k = 0; k < n; k++) { const v = this.laps.map(l => l.sectors[k]).filter(x => x != null); if (!v.length) return null; s += Math.min(...v); }
+    return s;
+  }
+}
+function interp(xs, ys, x) {
+  const n = xs.length; if (!n) return 0; if (x <= xs[0]) return ys[0]; if (x >= xs[n - 1]) return ys[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] <= x) lo = m; else hi = m; }
+  const f = (x - xs[lo]) / ((xs[hi] - xs[lo]) || 1); return ys[lo] + f * (ys[hi] - ys[lo]);
+}
+
+// ---------- Drag / akselerasi ----------
+const DRAG_DIST_MS = [[18.29, '60 ft'], [100, '100 m'], [201.17, '1/8 mile'], [402.34, '1/4 mile'], [1000, '1000 m']];
+class DragRun {
+  constructor(cfg) {
+    this.cfg = cfg; this.state = 'wait'; this.trace = []; this.ms = []; this.res = null; this.prev = null; this.vmax = 0; this.phase = 0;
+    const T = cfg.target;
+    this.spdMs = cfg.mode === 'speed' ? [...new Set([30, 60, 80, 100, 120, 140, 160, 180, 200].filter(v => v < T).concat([T]))]
+      : cfg.mode === 's0s' ? [T] : [];
+    this.distMs = (cfg.mode === 'dist' || cfg.mode === 'quarter') ? DRAG_DIST_MS.filter(m => m[0] < T - 0.5).concat([[T, (DRAG_DIST_MS.find(m => Math.abs(m[0] - T) < 0.5) || [0, T + ' m'])[1]]]) : [];
+    this.hit = {};
+  }
+  push(p) {
+    const a = this.prev; this.prev = p;
+    if (this.state === 'done' || this.state === 'fail') return;
+    if (this.state === 'wait') { if (p.spd < 1.5) this.state = 'armed'; return; }
+    if (this.state === 'armed') {
+      if (p.spd < 3 || !a) return;
+      let f = a.spd < p.spd ? (1 - a.spd) / (p.spd - a.spd) : 0; f = Math.max(0, Math.min(1, f));
+      this.t0 = a.t + f * (p.t - a.t); this.state = 'run';
+      this.last = [0, Math.max(a.spd, 0), 0]; this.trace = [[0, 0, 0]];
+      this.d = dist(a, p) * (1 - f);
+      this.cp = p; this.step(p.t - this.t0, p.spd, this.d); return;
+    }
+    if (this.state === 'run') { this.d += dist(a, p); this.cp = p; this.step(p.t - this.t0, p.spd, this.d); }
+  }
+  step(el, v, d) {
+    const [e0, v0, d0] = this.last; this.last = [el, v, d]; this.trace.push([el, v, d, this.cp ? this.cp.lat : 0, this.cp ? this.cp.lon : 0]);
+    this.vmax = Math.max(this.vmax, v);
+    const c = this.cfg;
+    if (this.phase === 0) for (const m of this.spdMs) if (!this.hit['v' + m] && v >= m && v0 < m) {
+      const f = (m - v0) / ((v - v0) || 1), t = e0 + f * (el - e0); this.hit['v' + m] = 1;
+      this.ms.push({ label: '0-' + m + ' km/h', t, d: d0 + f * (d - d0) });
+      if (m === c.target) { if (c.mode === 'speed') return this.finish({ time: t, dist: d0 + f * (d - d0) }); this.phase = 1; this.accel = t; this.accelD = d0 + f * (d - d0); }
+    }
+    for (const [m, lab] of this.distMs) if (!this.hit['d' + m] && d >= m && d0 < m) {
+      const f = (m - d0) / ((d - d0) || 1), t = e0 + f * (el - e0), vm = v0 + f * (v - v0); this.hit['d' + m] = 1;
+      this.ms.push({ label: lab, t, v: vm });
+      if (m === c.target) return this.finish({ time: t, trap: vm });
+    }
+    if (c.mode === 's0s' && this.phase === 1 && v <= 1) {
+      const f = v0 > v ? (v0 - 1) / (v0 - v) : 1, t = e0 + Math.max(0, Math.min(1, f)) * (el - e0);
+      return this.finish({ time: t, accel: this.accel, brake: t - this.accel, brakeDist: d - this.accelD });
+    }
+    if (el > 90000) return this.fail('Waktu habis');
+    if (this.phase === 0 && v < this.vmax - 15) return this.fail('Gas terlepas sebelum target');
+  }
+  finish(r) { this.state = 'done'; this.res = Object.assign({ mode: this.cfg.mode, target: this.cfg.target, label: dragLabel(this.cfg), vmax: this.vmax, ms: this.ms, trace: this.trace }, r); if (this.onDone) this.onDone(this.res); }
+  fail(why) { this.state = 'fail'; this.why = why; if (this.onFail) this.onFail(why); }
+}
+function dragLabel(c) {
+  if (c.mode === 'speed') return '0-' + c.target + ' km/h';
+  if (c.mode === 's0s') return '0-' + c.target + '-0 km/h';
+  if (c.mode === 'quarter') return '0-1/4 mile';
+  return '0-' + c.target + ' m';
+}
+
+// ---------- Simulator (mode Sim / demo) ----------
+const SIM_REF = { lat: -6.5352, lon: 106.8578 };
+function makeDemoTrack() {
+  const N = 3000, xy = [];
+  for (let i = 0; i < N; i++) {
+    const s = i / N * 2 * Math.PI;
+    xy.push([520 * Math.cos(s) + 90 * Math.cos(3 * s) + 40 * Math.sin(5 * s), 300 * Math.sin(s) + 110 * Math.sin(2 * s)]);
+  }
+  const cum = [0];
+  for (let i = 1; i <= N; i++) { const a = xy[i - 1], b = xy[i % N]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
+  const L = cum[N], kap = [], vt = [];
+  for (let i = 0; i < N; i++) {
+    const a = xy[(i - 1 + N) % N], b = xy[i], c = xy[(i + 1) % N];
+    const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    const k = 2 * cr / (Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(c[0] - b[0], c[1] - b[1]) * Math.hypot(c[0] - a[0], c[1] - a[1]));
+    kap.push(k); vt.push(Math.min(68, Math.sqrt(1.4 * 9.81 / Math.max(Math.abs(k), 1e-4))));
+  }
+  const v = vt.slice();
+  for (let pass = 0; pass < 2; pass++) for (let i = 0; i < N; i++) { const j = (i - 1 + N) % N, ds = cum[i + 1] - cum[i]; v[i] = Math.min(v[i], Math.sqrt(v[j] ** 2 + 2 * 0.55 * 9.81 * ds)); }
+  for (let pass = 0; pass < 2; pass++) for (let i = N - 1; i >= 0; i--) { const j = (i + 1) % N, ds = cum[i + 1] - cum[i]; v[i] = Math.min(v[i], Math.sqrt(v[j] ** 2 + 2 * 1.1 * 9.81 * ds)); }
+  const idxAt = s => { let lo = 0, hi = N; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; } return lo; };
+  const toLL = (x, y) => ({ lat: SIM_REF.lat + y / (R * RAD), lon: SIM_REF.lon + x / (R * RAD * Math.cos(SIM_REF.lat * RAD)) });
+  const hdgAt = i => { const a = xy[i], b = xy[(i + 1) % N]; return (Math.atan2(b[0] - a[0], b[1] - a[1]) / RAD + 360) % 360; };
+  const gate = (i, type) => Object.assign(toLL(xy[i][0], xy[i][1]), { hdg: hdgAt(i), w: 40, type });
+  return { N, xy, cum, L, kap, v, idxAt, toLL, hdgAt, gates: [gate(0, 'F'), gate(N / 3 | 0, 'S'), gate(2 * N / 3 | 0, 'S')] };
+}
+class Sim {
+  constructor() { this.tr = makeDemoTrack(); this.mode = 'track'; this.reset(); }
+  reset() { this.t = 100000 + (Math.random() * 1e6 | 0); this.s = this.tr.L * 0.93; this.v = 20; this.f = [1, 1, 1]; this.ph = 0; this.ptime = 0; this.x = 0; }
+  setMode(m) { if (m !== this.mode) { this.mode = m; this.reset(); this.v = m === 'drag' ? 0 : 20; } }
+  line(dt) {
+    this.t += Math.round(dt * 1000);
+    const g = 9.81, n = () => (Math.random() - 0.5);
+    let lat, lon, hdg, gx, gy, v0 = this.v;
+    if (this.mode === 'track') {
+      const tr = this.tr, i = tr.idxAt(this.s), sec = Math.min(2, (i / (tr.N / 3)) | 0);
+      this.v = tr.v[i] * this.f[sec];
+      this.s += this.v * dt;
+      if (this.s >= tr.L) { this.s -= tr.L; this.f = [0, 0, 0].map(() => 0.95 + Math.random() * 0.05); }
+      const j = tr.idxAt(this.s), ll = tr.toLL(tr.xy[j][0] + n() * 0.6, tr.xy[j][1] + n() * 0.6);
+      lat = ll.lat; lon = ll.lon; hdg = tr.hdgAt(j); gx = Math.max(-1.5, Math.min(1.5, this.v * this.v * tr.kap[j] / g)); gy = Math.max(-1.5, Math.min(1.5, (this.v - v0) / dt / g));
+    } else {
+      // drag: diam 3 dtk -> gas penuh sampai 200 km/h -> rem sampai berhenti
+      let a = 0;
+      if (this.ph === 0) { this.ptime += dt; if (this.ptime > 3) { this.ph = 1; } }
+      else if (this.ph === 1) { a = Math.max(0.12, 0.75 * (1 - this.v / 70)) * g; if (this.v >= 200 / 3.6) this.ph = 2; }
+      else { a = -1.0 * g; if (this.v + a * dt <= 0) { this.v = 0; a = 0; this.ph = 0; this.ptime = 0; } }
+      this.v = Math.max(0, this.v + a * dt); this.x += this.v * dt;
+      const ll = this.tr.toLL(this.x - 2000, -900);
+      lat = ll.lat; lon = ll.lon; hdg = 90; gx = n() * 0.02; gy = a / g;
+    }
+    const kmh = Math.max(0, this.v * 3.6 + (this.v > 0.5 ? n() * 0.4 : 0));
+    return `RS,${this.t},${lat.toFixed(7)},${lon.toFixed(7)},${kmh.toFixed(1)},${hdg.toFixed(1)},${14 + (Math.random() * 3 | 0)},${gx.toFixed(2)},${gy.toFixed(2)}`;
+  }
+}
+// ---------- util ----------
+function fmtLap(ms) { if (ms == null || !isFinite(ms)) return '--:--.---'; const neg = ms < 0; ms = Math.abs(ms); const m = Math.floor(ms / 60000), s = (ms % 60000) / 1000; return (neg ? '-' : '') + m + ':' + s.toFixed(3).padStart(6, '0'); }
+function fmtSec(ms, dp = 2) { return ms == null ? '--' : (ms / 1000).toFixed(dp); }
+function fmtDelta(ms) { return ms == null ? '±0.00' : (ms >= 0 ? '+' : '−') + Math.abs(ms / 1000).toFixed(2); }
+if (false) module.exports = { parseLine, Proc, DragRun, Sim, makeDemoTrack, fmtLap, rel, dist, headingAt };
+
+</script>
+<script>
+// ================= APP =================
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+// ---------- versi & jembatan APK ----------
+const APP_VER = '1.1.2';               // versi tampilan aplikasi (naikkan setiap update)
+const NATIVE = window.RS16Native || null; // ada kalau dibuka dari APK RS16
+function nat(fn, ...a) { try { return NATIVE && typeof NATIVE[fn] === 'function' ? NATIVE[fn](...a) : undefined; } catch (e) { console.log('native', fn, e); } }
+function verCmp(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b || '0').split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; } return 0; }
+function vib(p) { if (NATIVE) nat('vibrate', Array.isArray(p) ? p.reduce((a, b) => a + b, 0) : p); else if (navigator.vibrate) navigator.vibrate(p); }
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('rs16_' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('rs16_' + k, JSON.stringify(v)); return true; } catch (e) { toast('Penyimpanan HP penuh. Hapus/backup sesi lama.'); return false; } },
+  del(k) { try { localStorage.removeItem('rs16_' + k); } catch (e) { } },
+  keys() { try { return Object.keys(localStorage).filter(k => k.startsWith('rs16_')); } catch (e) { return []; } }
+};
+const S = { set: Object.assign({ name: 'Rider', gateW: 30, near: 20, wake: '1' }, store.get('settings', {})), last: null, sats: 0, fix: false, hz: 0, hzT: [], run: null, stack: ['s-home'], phonePos: null };
+let toastT;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2600); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+function fmtDate(ts) { const d = new Date(ts); return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }); }
+
+// ---------- navigasi ----------
+function go(id, push = true) {
+  $$('.screen').forEach(s => s.classList.toggle('act', s.id === id));
+  if (push && S.stack[S.stack.length - 1] !== id) { S.stack.push(id); try { history.pushState(null, ''); } catch (e) { } }
+  const f = onShow[id]; if (f) f();
+}
+function back() { if (S.stack.length > 1) S.stack.pop(); go(S.stack[S.stack.length - 1], false); }
+const onShow = {
+  's-home': () => { $('#riderName').textContent = S.set.name || 'Rider'; $('#riderName2').textContent = S.set.name || 'Rider'; $('#riderInit').textContent = (S.set.name || 'R')[0].toUpperCase(); $('#hmSess').textContent = store.get('hist', []).length; updConnUI(); },
+  's-settings': () => { $('#setName').value = S.set.name; $('#setGateW').value = S.set.gateW; $('#setNear').value = S.set.near; $('#setWake').value = S.set.wake; $('#setSat').value = S.set.sat || '1'; let b = 0; store.keys().forEach(k => b += (localStorage.getItem(k) || '').length); $('#setUsage').textContent = 'Data tersimpan: ' + (b / 1024).toFixed(0) + ' KB (batas browser sekitar 5 MB). Backup lalu hapus sesi lama bila penuh.'; },
+  's-link': () => updLink(),
+  's-select': () => { if (S.selTab === 'track') renderTrackBody(); },
+};
+window.addEventListener('popstate', () => { if (S.run) { try { history.pushState(null, ''); } catch (e) { } toast('Tekan STOP / ‹ untuk keluar dari balapan'); return; } if (S.stack.length > 1) back(); });
+function saveSettings() {
+  S.set.name = $('#setName').value.trim() || 'Rider'; S.set.gateW = Math.max(10, +$('#setGateW').value || 30); S.set.near = Math.max(1, +$('#setNear').value || 20); S.set.wake = $('#setWake').value; S.set.sat = $('#setSat').value;
+  store.set('settings', S.set);
+}
+
+// ---------- sheet ----------
+function openSheet(html) { $('#sheet').innerHTML = html; $('#sheetBg').classList.add('act'); }
+function closeSheet() { $('#sheetBg').classList.remove('act'); }
+let askRes = null;
+function ask(msg, o = {}) {
+  return new Promise(res => {
+    if (askRes) askRes(o.input != null ? null : false); askRes = res;
+    openSheet(`<h2>${esc(msg)}</h2>${o.input != null ? `<input id="askIn" value="${esc(o.input)}">` : ''}<div class="btns" style="margin-top:16px"><button class="btn" onclick="askDone(false)">${o.no || 'Batal'}</button><button class="btn ${o.danger ? '' : 'red'}" style="${o.danger ? 'background:var(--bad);color:#fff' : ''}" onclick="askDone(true)">${o.yes || 'OK'}</button></div>`);
+    if (o.input != null) setTimeout(() => { const i = $('#askIn'); if (i) { i.focus(); i.select(); i.onkeydown = e => e.key === 'Enter' && askDone(true); } }, 60);
+  });
+}
+function askDone(ok) { const i = $('#askIn'), v = i ? i.value : null, r = askRes; askRes = null; closeSheet(); if (r) r(i ? (ok ? v : null) : ok); }
+
+// ================= KONEKSI =================
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e', NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e', NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const Conn = {
+  type: null, status: 'off', buf: '', dev: null, rx: null, sock: null, simObj: null, simTimer: null, want: false,
+  setStatus(type, st) { this.type = type; this.status = st; updConnUI(); },
+  feed(txt) { this.buf += txt; let i; while ((i = this.buf.indexOf('\n')) >= 0) { const l = this.buf.slice(0, i); this.buf = this.buf.slice(i + 1); onLine(l); } if (this.buf.length > 2000) this.buf = ''; },
+  async ble() {
+    if (!navigator.bluetooth) { toast(location.protocol === 'http:' ? 'Bluetooth butuh halaman https. Pakai WiFi di sini.' : 'Browser ini tidak mendukung Bluetooth. Pakai Chrome Android.'); return; }
+    try {
+      this.close(); this.want = true;
+      const dev = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'RS16' }, { services: [NUS] }], optionalServices: [NUS] });
+      this.dev = dev; dev.addEventListener('gattserverdisconnected', () => this.bleLost());
+      await this.bleConnect();
+    } catch (e) { this.setStatus(null, 'off'); if (e.name !== 'NotFoundError') toast('Bluetooth gagal: ' + e.message); }
+  },
+  async bleConnect() {
+    this.setStatus('ble', 'connecting');
+    const srv = await this.dev.gatt.connect(), svc = await srv.getPrimaryService(NUS);
+    const tx = await svc.getCharacteristic(NUS_TX);
+    try { this.rx = await svc.getCharacteristic(NUS_RX); } catch (e) { this.rx = null; }
+    const dec = new TextDecoder();
+    tx.addEventListener('characteristicvaluechanged', ev => this.feed(dec.decode(ev.target.value)));
+    await tx.startNotifications(); this.setStatus('ble', 'on'); toast('Terhubung ke ' + (this.dev.name || 'RS16'));
+  },
+  bleLost() {
+    if (!this.want || this.type !== 'ble') return; this.setStatus('ble', 'connecting'); let n = 0;
+    const tryIt = () => { if (!this.want) return; this.bleConnect().catch(() => { if (++n < 20) setTimeout(tryIt, 1500); else this.setStatus(null, 'off'); }); };
+    setTimeout(tryIt, 800);
+  },
+  ws(url, auto) {
+    if (location.protocol === 'https:' && url.startsWith('ws:')) { toast('Untuk WiFi, buka aplikasi dari http://192.168.4.1 (dari alat).'); }
+    this.close(); this.want = true; this.url = url; this.auto = !!auto; this.fails = 0; this.wsOpen();
+  },
+  wsOpen() {
+    this.setStatus('ws', 'connecting');
+    let s; try { s = new WebSocket(this.url); } catch (e) { toast('Alamat WiFi salah'); this.setStatus(null, 'off'); return; }
+    this.sock = s;
+    s.onopen = () => { this.fails = 0; this.auto = false; this.setStatus('ws', 'on'); toast('Terhubung ke RS16 via WiFi'); };
+    s.onmessage = ev => typeof ev.data === 'string' ? this.feed(ev.data.endsWith('\n') ? ev.data : ev.data + '\n') : null;
+    s.onclose = () => { if (this.sock !== s) return; if (this.want && this.auto && ++this.fails >= 3) { this.want = false; this.sock = null; this.setStatus(null, 'off'); return; } if (this.want) { this.setStatus('ws', 'connecting'); setTimeout(() => this.want && this.sock === s && this.wsOpen(), 2000); } else this.setStatus(null, 'off'); };
+    s.onerror = () => { };
+  },
+  sim() {
+    this.close(); this.want = true; this.simObj = new Sim(); this.simObj.setMode(S.run && S.run.kind === 'drag' ? 'drag' : 'track');
+    this.setStatus('sim', 'on'); let last = performance.now();
+    this.simTimer = setInterval(() => { const now = performance.now(); let n = Math.min(10, Math.round((now - last) / 40)); last += n * 40; while (n-- > 0) this.feed(this.simObj.line(0.04) + '\n'); }, 40);
+  },
+  close() {
+    this.want = false;
+    if (this.dev && this.dev.gatt && this.dev.gatt.connected) try { this.dev.gatt.disconnect(); } catch (e) { }
+    if (this.sock) { const s = this.sock; this.sock = null; try { s.close(); } catch (e) { } }
+    if (this.simTimer) { clearInterval(this.simTimer); this.simTimer = null; this.simObj = null; }
+    this.dev = null; this.rx = null; this.buf = ''; this.setStatus(null, 'off');
+  },
+  async send(cmd) {
+    try {
+      if (this.type === 'ble' && this.rx) { await this.rx.writeValue(new TextEncoder().encode(cmd + '\n')); return true; }
+      if (this.type === 'ws' && this.sock && this.sock.readyState === 1) { this.sock.send(cmd + '\n'); return true; }
+    } catch (e) { }
+    return false;
+  }
+};
+async function sendHz(hz) { if (Conn.type === 'sim') { toast('Simulasi selalu 25 Hz'); return; } toast(await Conn.send('HZ,' + hz) ? 'Perintah GPS ' + hz + ' Hz dikirim' : 'Belum terhubung ke alat'); }
+const connName = { ble: 'Bluetooth', ws: 'WiFi', sim: 'Simulasi' };
+function updConnUI() {
+  const on = Conn.status === 'on'; $('#homeDot').classList.toggle('on', on);
+  $('#hmConn').textContent = on ? ({ ble: 'BLE', ws: 'WiFi', sim: 'Sim' })[Conn.type] : Conn.status === 'connecting' ? '…' : 'Off'; $('#hmSat').textContent = on && S.sats ? S.sats : '--';
+  ['#runDot', '#dragDot'].forEach(s => $(s).classList.toggle('on', on && S.fix));
+  updLink();
+}
+function updLink() {
+  { const sig = [Conn.status, Conn.type, S.dev && S.dev.fw].join(); if (sig !== S.upSig) { S.upSig = sig; if (S.stack[S.stack.length - 1] === 's-update' && !S.flashing) renderUpdate(); } }
+  const st = Conn.status === 'on' ? 'Terhubung — ' + connName[Conn.type] : Conn.status === 'connecting' ? 'Menghubungkan (' + connName[Conn.type] + ')…' : 'Belum terhubung';
+  $('#lkStatus').textContent = st; $('#lkSat').textContent = S.sats || '--'; $('#lkHz').textContent = S.hz ? S.hz + ' Hz' : '--';
+  $('#lkSpd').textContent = S.last && S.fix ? S.last.spd.toFixed(0) : '--';
+  $('#lkPos').textContent = S.last && S.fix ? 'Posisi: ' + S.last.lat.toFixed(6) + ', ' + S.last.lon.toFixed(6) : (Conn.status === 'on' ? 'Menunggu fix GPS…' : 'Posisi: --');
+}
+
+// ================= DATA MASUK =================
+let dirty = false;
+function onLine(l) {
+  if (l.startsWith('HELLO,')) { const f = l.trim().split(','); S.dev = { name: f[1], fw: f[2] }; dirty = true; fwOffer(); return; }
+  const p = parseLine(l); if (!p) return;
+  S.sats = p.sat;
+  if (p.nofix) { S.fix = false; dirty = true; return; }
+  S.fix = true; S.last = p;
+  const now = performance.now(); S.hzT.push(now); while (S.hzT.length && S.hzT[0] < now - 1000) S.hzT.shift(); S.hz = S.hzT.length;
+  const r = S.run;
+  if (r && r.kind === 'track') r.proc.push(Object.assign({}, p));
+  if (r && r.kind === 'drag') r.drag.push(p);
+  dirty = true;
+}
+function loop() {
+  if (dirty) {
+    dirty = false; const cur = S.stack[S.stack.length - 1];
+    if (cur === 's-run') renderRun(); else if (cur === 's-drag') renderDrag(); else if (cur === 's-link') updLink();
+    updConnUI();
+  }
+  requestAnimationFrame(loop);
+}
+let wakeLock = null;
+async function wake(on) { if (NATIVE) { nat('keepScreen', !!on && S.set.wake === '1'); return; } try { if (on && S.set.wake === '1' && navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); else if (!on && wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) { } }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.run) wake(true); });
+
+// ================= TRACKS =================
+function getTracks() { return store.get('tracks', []); }
+function saveTracks(t) { store.set('tracks', t); }
+function trackById(id) { return getTracks().find(t => t.id === id); }
+function upsertTrack(tr) { const ts = getTracks(), i = ts.findIndex(t => t.id === tr.id); if (i >= 0) ts[i] = tr; else ts.push(tr); saveTracks(ts); }
+function touchRecent(key, id) { let r = store.get(key, []); r = [id].concat(r.filter(x => x !== id)).slice(0, 10); store.set(key, r); }
+function trackCenter(tr) { const g = tr.gates && tr.gates[0]; return g ? { lat: g.lat, lon: g.lon } : (tr.lat != null ? { lat: tr.lat, lon: tr.lon } : null); }
+
+S.selTab = 'speed'; S.trackSub = 'nearby'; S.trackQ = '';
+function selTab(t) {
+  S.selTab = t; $('#tabSpeed').classList.toggle('on', t === 'speed'); $('#tabTrack').classList.toggle('on', t === 'track');
+  $('#paneSpeed').style.display = t === 'speed' ? '' : 'none'; $('#paneTrack').style.display = t === 'track' ? '' : 'none';
+  $('#fabSearch').style.display = t === 'track' ? '' : 'none';
+  if (t === 'track') trackSub(S.trackSub);
+}
+function trackSub(st) { S.trackSub = st; $$('#paneTrack .subtabs button').forEach(b => b.classList.toggle('on', b.dataset.st === st)); renderTrackBody(); }
+async function trackSearch() { const q = await ask('Cari nama track', { input: S.trackQ, yes: 'Cari' }); if (q == null) return; S.trackQ = q.trim(); trackSub('all'); }
+function myPos() { return S.last && S.fix ? { lat: S.last.lat, lon: S.last.lon } : S.phonePos; }
+function askPhonePos() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(p => { S.phonePos = { lat: p.coords.latitude, lon: p.coords.longitude }; if (S.trackSub === 'nearby') renderTrackBody(); }, () => { }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+}
+function trackRow(t, pos) {
+  const c = trackCenter(t), km = pos && c ? dist(pos, c) / 1000 : null;
+  const best = bestForTrack(t.id);
+  return `<div class="row" onclick="startTrack('${t.id}')"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M5 20c-3-4 0-8 3-9s2-5 5-6 6 1 6 4-4 3-3 6 3 3 2 5-6 2-8 0-3 2-5 0z"/></svg></div>
+  <div class="m"><div class="t">${esc(t.name)}</div><div class="s">${t.gates.length ? (t.gates.length - 1) + ' sektor' : 'garis belum diatur'}${km != null ? ' · ' + km.toFixed(1) + ' km' : ''}</div></div>
+  <div class="r num" style="color:var(--best)">${best ? fmtLap(best) : ''}</div></div>`;
+}
+function renderTrackBody() {
+  const b = $('#trackBody'), ts = getTracks(), pos = myPos(); let h = '';
+  if (S.trackSub === 'recent') {
+    const r = store.get('recentTracks', []).map(trackById).filter(Boolean);
+    h = r.length ? '<div class="list">' + r.map(t => trackRow(t, pos)).join('') + '</div>' : '<div class="empty">Belum ada track yang dipakai.</div>';
+  } else if (S.trackSub === 'nearby') {
+    if (!pos) askPhonePos();
+    const near = pos ? ts.map(t => [t, trackCenter(t)]).filter(x => x[1] && dist(pos, x[1]) < S.set.near * 1000).sort((a, b) => dist(pos, a[1]) - dist(pos, b[1])).map(x => x[0]) : [];
+    h = `<button class="card" onclick="newTrack()"><svg viewBox="0 0 64 64"><path d="M32 12v40M12 32h40"/></svg><span>Buat track baru<small>Rekam lalu pasang garis finish & sektor</small></span></button>
+    <h3 style="padding:0 18px">Dekat sini ${pos ? '(' + S.set.near + ' km)' : ''}</h3>` +
+      (near.length ? '<div class="list">' + near.map(t => trackRow(t, pos)).join('') + '</div>' : `<div class="empty">${pos ? 'Tidak ada track tersimpan di sekitar sini.' : 'Mencari lokasi… Sambungkan alat atau izinkan lokasi HP.'}</div>`);
+  } else if (S.trackSub === 'all') {
+    const q = S.trackQ.toLowerCase(), f = ts.filter(t => !q || t.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+    h = (q ? `<div class="pad note">Hasil cari "${esc(S.trackQ)}" · <a style="color:var(--red)" onclick="S.trackQ='';renderTrackBody()">hapus filter</a></div>` : '') +
+      (f.length ? '<div class="list">' + f.map(t => trackRow(t, pos)).join('') + '</div>' : '<div class="empty">Belum ada track. Buat di tab Terdekat → Buat track baru.</div>');
+    if (f.length) h += '<p class="note pad">Tekan lama nama track untuk ganti nama / hapus.</p>';
+  } else {
+    h = `<button class="card" onclick="startSimTrack()"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24"/><path d="M26 20l18 12-18 12z" fill="currentColor"/></svg><span>Demo Circuit<small>Coba aplikasi dengan data simulasi</small></span></button>
+    <p class="note pad">Mode simulasi memakai data GPS buatan untuk mencoba lap timer, delta, peta dan grafik tanpa alat.</p>`;
+  }
+  b.innerHTML = h;
+  b.querySelectorAll('.row').forEach(row => { let tm; row.addEventListener('touchstart', () => { tm = setTimeout(() => { const id = (row.getAttribute('onclick').match(/'(.+)'/) || [])[1]; trackMenu(id); }, 600); }, { passive: true }); row.addEventListener('touchend', () => clearTimeout(tm)); row.addEventListener('touchmove', () => clearTimeout(tm), { passive: true }); row.addEventListener('contextmenu', e => { e.preventDefault(); const id = (row.getAttribute('onclick').match(/'(.+)'/) || [])[1]; trackMenu(id); }); });
+}
+function trackMenu(id) {
+  const t = trackById(id); if (!t) return;
+  openSheet(`<h2>${esc(t.name)}</h2><div class="btns" style="flex-direction:column">
+  <button class="btn red" onclick="closeSheet();startTrack('${id}')">Mulai balapan</button>
+  <button class="btn" onclick="renameTrack('${id}')">Ganti nama</button>
+  <button class="btn" style="color:var(--bad)" onclick="delTrack('${id}')">Hapus track</button></div>`);
+}
+async function renameTrack(id) { const t = trackById(id), n = await ask('Nama track', { input: t.name, yes: 'Simpan' }); if (n) { t.name = n.trim(); upsertTrack(t); } renderTrackBody(); }
+async function delTrack(id) { if (!await ask('Hapus track ini? Sesi di Riwayat tetap ada.', { yes: 'Hapus', danger: 1 })) return; saveTracks(getTracks().filter(t => t.id !== id)); closeSheet(); renderTrackBody(); }
+async function newTrack() {
+  const n = await ask('Nama track baru', { input: 'Track ' + (getTracks().length + 1), yes: 'Buat & mulai' }); if (!n) return;
+  const t = { id: uid(), name: n.trim(), gates: [], created: Date.now() }; const p = myPos(); if (p) { t.lat = p.lat; t.lon = p.lon; }
+  upsertTrack(t); startTrack(t.id);
+}
+function needConn() { if (Conn.status === 'off') { toast('Hubungkan alat RS16 dulu'); go('s-link'); return true; } return false; }
+
+// ================= TRACK RUN =================
+function startTrack(id, sim) {
+  const t = trackById(id); if (!t) return;
+  if (!sim && Conn.type === 'sim') Conn.close();
+  if (!sim && needConn()) return;
+  touchRecent('recentTracks', id);
+  const proc = new Proc(t);
+  S.run = { kind: 'track', track: t, proc, t0: Date.now(), sim: !!sim };
+  proc.onLap = lap => showFlash(lap);
+  $('#runTitle').textContent = t.name; $('#runGateBar').style.display = t.gates.length ? 'none' : 'flex';
+  closeSheet(); applyDetail(); go('s-run'); wake(true); renderRun();
+}
+function startSimTrack() {
+  let t = getTracks().find(x => x.sim);
+  if (!t) { const tr = makeDemoTrack(); t = { id: uid(), name: 'Demo Circuit', gates: tr.gates, sim: true, created: Date.now() }; upsertTrack(t); }
+  if (Conn.type !== 'sim') Conn.sim(); Conn.simObj.setMode('track');
+  startTrack(t.id, true);
+}
+function setGateHere(type) {
+  const r = S.run; if (!r || !S.fix || r.proc.pts.length < 8) { toast('Tunggu GPS fix & mulai jalan dulu'); return; }
+  const pts = r.proc.pts, i = pts.length - 1, p = pts[i];
+  if (p.spd < 8) { toast('Lewati titik ini sambil jalan (>8 km/h) supaya arah garis benar'); return; }
+  const g = { lat: p.lat, lon: p.lon, hdg: headingAt(pts, i - 3), w: S.set.gateW, type };
+  if (type === 'F') r.track.gates[0] = g; else { if (!r.track.gates.length) { toast('Pasang garis Finish dulu'); return; } r.track.gates.push(g); }
+  upsertTrack(r.track); r.proc.setTrack(r.track);
+  toast(type === 'F' ? 'Garis finish dipasang' : 'Sektor ' + (r.track.gates.length - 1) + ' dipasang');
+  if (r.track.gates.length >= 3) $('#runGateBar').style.display = 'none';
+}
+function showFlash(lap) {
+  const r = S.run, pr = r.proc, isBest = pr.best === lap, prevBest = pr.laps.filter(l => l !== lap).reduce((m, l) => Math.min(m, l.time), Infinity);
+  $('#flA').textContent = 'LAP ' + lap.n + (isBest ? ' · BEST' : '');
+  $('#flB').textContent = fmtLap(lap.time); $('#flB').style.color = isBest ? 'var(--best)' : '#fff';
+  $('#flC').textContent = isFinite(prevBest) ? fmtDelta(lap.time - prevBest) : '';
+  $('#flC').style.color = lap.time <= prevBest ? 'var(--good)' : 'var(--bad)';
+  $('#flash').classList.add('act'); clearTimeout(S.flT); S.flT = setTimeout(() => $('#flash').classList.remove('act'), 5000);
+  vib(isBest ? [120, 80, 120] : 200);
+}
+$('#flash').onclick = () => $('#flash').classList.remove('act');
+const runMap = { gTrail: [] };
+function renderRun() {
+  const r = S.run; if (!r) return; const pr = r.proc, p = S.last;
+  $('#runConn').textContent = Conn.status === 'on' ? connName[Conn.type] : 'Terputus';
+  $('#runSat').textContent = 'Sat ' + (S.sats || '--'); $('#runHz').textContent = (S.hz || '--') + ' Hz';
+  $('#runLapN').textContent = pr.cur ? 'Lap ' + (pr.laps.length + 1) : (pr.gates.length ? 'Out lap' : 'Atur garis finish');
+  $('#rLapLbl').textContent = pr.cur ? 'Lap ' + (pr.laps.length + 1) : (pr.gates.length ? 'Out lap' : 'Belum ada garis finish');
+  $('#rSpd').textContent = p && S.fix ? Math.round(p.spd) : '--';
+  const lv = pr.live();
+  $('#rLap').textContent = lv ? fmtLap(lv.lapTime) : '--:--.---';
+  const dl = $('#rDelta');
+  if (lv && lv.delta != null) { dl.textContent = fmtDelta(lv.delta); dl.className = 'dlblk num ' + (lv.delta <= 0 ? 'g' : 'b'); } else { dl.textContent = '±0.00'; dl.className = 'dlblk n num'; }
+  const last = pr.laps[pr.laps.length - 1];
+  $('#rLast').textContent = last ? fmtLap(last.time) : '--'; $('#rBest').textContent = pr.best ? fmtLap(pr.best.time) : '--';
+  $('#rPred').textContent = lv && lv.delta != null ? fmtLap(pr.best.time + lv.delta) : '--';
+  const nS = pr.gates.length;
+  if (nS > 1) {
+    let h = ''; for (let k = 0; k < Math.min(nS, 6); k++) {
+      const cur = lv && lv.splits[k] != null ? lv.splits[k] : null, bs = pr.laps.map(l => l.sectors[k]).filter(x => x != null), bmin = bs.length ? Math.min(...bs) : null;
+      const shown = cur != null ? cur : (last ? last.sectors[k] : null);
+      const col = cur != null && bmin != null ? (cur <= bmin ? 'var(--best)' : 'var(--txt)') : 'var(--dim)';
+      h += `<div class="box"><div class="k">S${k + 1}</div><div class="v num" style="color:${col}">${shown != null ? fmtSec(shown) : '--'}</div></div>`;
+    }
+    $('#rSectors').innerHTML = h; $('#rSectors').style.display = '';
+  } else $('#rSectors').style.display = 'none';
+  if (!S.set.detail) return;
+  // peta mini
+  const pts = pr.pts;
+  drawMapSimple($('#rMap'), pts.length > 4000 ? pts.slice(-4000) : pts, pr.gates, p && S.fix ? p : null);
+  // G meter
+  if (p && S.fix) { runMap.gTrail.push([p.gx, p.gy]); if (runMap.gTrail.length > 60) runMap.gTrail.shift(); }
+  drawG($('#rG'), runMap.gTrail, p && S.fix ? p : null);
+}
+async function toggleDetail() { S.set.detail = !S.set.detail; store.set('settings', S.set); applyDetail(); dirty = true; }
+function applyDetail() { $('#dash').classList.toggle('det', !!S.set.detail); $('#detBtn').classList.toggle('on', !!S.set.detail); }
+async function stopRun() {
+  const r = S.run; if (!r) { back(); return; }
+  if (r.proc.pts.length > 50 && !await ask('Stop dan simpan sesi ini?', { yes: 'Stop & simpan', no: 'Lanjut' })) return;
+  if (S.run !== r) return;
+  S.run = null; wake(false); if (r.sim) Conn.close();
+  if (r.proc.pts.length > 50) {
+    const id = saveTrackSession(r);
+    if (!r.track.gates.length) { toast('Sesi tersimpan. Atur garis finish di peta.'); S.stack = ['s-home', 's-history']; openDetail(id); openEditor(id); return; }
+    toast('Sesi tersimpan di Riwayat'); S.stack = ['s-home', 's-history']; openDetail(id); return;
+  }
+  S.stack = ['s-home']; go('s-home', false);
+}
+function packPts(pts) { return pts.map(p => [Math.round(p.t), +p.lat.toFixed(7), +p.lon.toFixed(7), +p.spd.toFixed(1), Math.round(p.hdg), p.sat, +p.gx.toFixed(2), +p.gy.toFixed(2)]); }
+function unpackPts(a) { return a.map(v => ({ t: v[0], lat: v[1], lon: v[2], spd: v[3], hdg: v[4], sat: v[5], gx: v[6], gy: v[7] })); }
+function saveTrackSession(r) {
+  const id = uid(), pr = r.proc;
+  const sess = { id, kind: 'track', date: r.t0, trackId: r.track.id, trackName: r.track.name, gates: r.track.gates, pts: packPts(pr.pts) };
+  if (!store.set('h_' + id, sess)) return null;
+  const h = store.get('hist', []); h.unshift(summTrack(sess, pr)); store.set('hist', h); return id;
+}
+function summTrack(sess, pr) { return { id: sess.id, kind: 'track', date: sess.date, name: sess.trackName, trackId: sess.trackId, laps: pr.laps.length, best: pr.best ? pr.best.time : null, vmax: Math.max(0, ...pr.pts.map(p => p.spd)) }; }
+
+// ================= DRAG =================
+const DRAG_OPTS = { speed: [60, 80, 100, 120, 150, 200], dist: [100, 201.17, 402.34, 1000], s0s: [60, 100, 150, 200] };
+function dragPick(mode) {
+  const title = { speed: '0 sampai kecepatan', dist: '0 sampai jarak', s0s: '0 → kecepatan → 0' }[mode];
+  const unit = mode === 'dist' ? 'm' : 'km/h', lab = v => mode === 'dist' ? ({ 201.17: '201 m (1/8)', 402.34: '402 m (1/4)' }[v] || v + ' m') : v + ' km/h';
+  openSheet(`<h2>${title}</h2><div class="chips">${DRAG_OPTS[mode].map(v => `<button class="chip" onclick="closeSheet();startDrag({mode:'${mode}',target:${v}})">${lab(v)}</button>`).join('')}</div>
+  <div class="field" style="margin-top:16px"><label>Target lain (${unit})</label><div style="display:flex;gap:8px"><input id="dragCustom" type="number" inputmode="decimal"><button class="btn red" onclick="const v=+$('#dragCustom').value;if(v>0){closeSheet();startDrag({mode:'${mode}',target:v})}">Mulai</button></div></div>`);
+}
+function dragRecent() {
+  const r = store.get('recentDrag', []);
+  if (!r.length) { toast('Belum ada mode yang dipakai'); return; }
+  openSheet('<h2>Terakhir dipakai</h2><div class="chips">' + r.map(c => `<button class="chip" onclick='closeSheet();startDrag(${JSON.stringify(c)})'>${dragLabel(c)}</button>`).join('') + '</div>');
+}
+async function startDrag(cfg) {
+  if (Conn.status === 'off') { if (!await ask('Alat belum terhubung. Coba dengan Simulasi?', { yes: 'Simulasi', no: 'Hubungkan alat' })) { go('s-link'); return; } Conn.sim(); }
+  if (Conn.type === 'sim') Conn.simObj.setMode('drag');
+  let r = store.get('recentDrag', []).filter(c => !(c.mode === cfg.mode && c.target === cfg.target)); r.unshift(cfg); store.set('recentDrag', r.slice(0, 8));
+  const d = new DragRun(cfg); S.run = { kind: 'drag', cfg, drag: d, t0: Date.now() };
+  d.onDone = res => { saveDrag(res); vib([150, 80, 150]); renderDrag(); };
+  d.onFail = () => renderDrag();
+  $('#dragTitle').textContent = dragLabel(cfg); $('#dResult').innerHTML = ''; $('#dMs').innerHTML = ''; $('#dChart').style.display = 'none';
+  go('s-drag'); wake(true); renderDrag();
+}
+function retryDrag() { if (S.run && S.run.kind === 'drag') { S.stack.pop(); startDrag(S.run.cfg); } }
+function stopDrag() { const sim = Conn.type === 'sim'; S.run = null; wake(false); if (sim) Conn.close(); back(); }
+function renderDrag() {
+  const r = S.run; if (!r || r.kind !== 'drag') return; const d = r.drag, p = S.last;
+  $('#dragGps').textContent = (S.sats || '--') + ' sat · ' + (S.hz || '--') + ' Hz';
+  const st = $('#dState'); const map = { wait: ['BERHENTI DULU', 'wait'], armed: ['SIAP — GAS!', 'armed'], run: ['JALAN', 'run'], done: ['SELESAI', 'done'], fail: ['GAGAL: ' + (d.why || ''), 'fail'] };
+  const m = S.fix ? map[d.state] : ['MENUNGGU GPS', 'wait']; st.textContent = m[0]; st.className = 'dstate ' + m[1];
+  const el = d.state === 'run' ? d.last[0] : d.state === 'done' ? d.res.time : 0;
+  $('#dTime').textContent = (el / 1000).toFixed(2);
+  $('#dSpd').textContent = p && S.fix ? Math.round(p.spd) : '--';
+  $('#dDist').textContent = d.state === 'run' || d.state === 'done' ? Math.round(d.last[2]) : 0;
+  $('#dMax').textContent = Math.round(d.vmax);
+  $('#dMs').innerHTML = d.ms.length ? '<tr><th>Titik</th><th class="r">Waktu</th><th class="r">Speed/Jarak</th></tr>' + d.ms.map(m => `<tr><td>${m.label}</td><td class="r">${(m.t / 1000).toFixed(2)} s</td><td class="r">${m.v != null ? m.v.toFixed(1) + ' km/h' : Math.round(m.d) + ' m'}</td></tr>`).join('') : '';
+  if (d.state === 'done' && !d.shown) { d.shown = 1; $('#dResult').innerHTML = dragResultHtml(d.res); $('#dChart').style.display = 'block'; drawDragChart($('#dChart'), d.res); }
+}
+function dragResultHtml(res) {
+  let h = `<div class="big3"><div class="box"><div class="k">Waktu</div><div class="v num">${(res.time / 1000).toFixed(2)} s</div></div>`;
+  if (res.trap != null) h += `<div class="box"><div class="k">Trap</div><div class="v num">${res.trap.toFixed(1)}</div></div>`;
+  if (res.accel != null) h += `<div class="box"><div class="k">Akselerasi</div><div class="v num">${(res.accel / 1000).toFixed(2)} s</div></div><div class="box"><div class="k">Rem</div><div class="v num">${(res.brake / 1000).toFixed(2)} s</div></div><div class="box"><div class="k">Jarak rem</div><div class="v num">${res.brakeDist.toFixed(0)} m</div></div>`;
+  if (res.dist != null) h += `<div class="box"><div class="k">Jarak</div><div class="v num">${res.dist.toFixed(0)} m</div></div>`;
+  return h + `<div class="box"><div class="k">Top</div><div class="v num">${res.vmax.toFixed(0)}</div></div></div>`;
+}
+function saveDrag(res) {
+  const id = uid(), date = Date.now(), tr = res.trace.filter((_, i) => i % 2 === 0 || i === res.trace.length - 1).map(v => [Math.round(v[0]), +v[1].toFixed(1), +v[2].toFixed(1), +(+v[3]).toFixed(7), +(+v[4]).toFixed(7)]);
+  const sess = Object.assign({}, res, { id, kind: 'drag', date, trace: tr });
+  store.set('h_' + id, sess);
+  const h = store.get('hist', []); h.unshift({ id, kind: 'drag', date, name: res.label, mode: res.mode, target: res.target, time: res.time, trap: res.trap }); store.set('hist', h);
+}
+
+// ================= HISTORY =================
+S.hFilter = 'all';
+function openHistory() { go('s-history'); renderHistory(); }
+function histFilter(f) { S.hFilter = f; $$('#s-history .subtabs button').forEach(b => b.classList.toggle('on', b.dataset.h === f)); renderHistory(); }
+function renderHistory() {
+  const h = store.get('hist', []).filter(x => S.hFilter === 'all' || x.kind === S.hFilter);
+  $('#histList').innerHTML = h.length ? h.map(x => x.kind === 'track' ?
+    `<div class="row" onclick="openDetail('${x.id}')"><div class="ic">🏁</div><div class="m"><div class="t">${esc(x.name)}</div><div class="s">${fmtDate(x.date)} · ${x.laps} lap · top ${Math.round(x.vmax || 0)} km/h</div></div><div class="r num" style="color:var(--best)">${x.best ? fmtLap(x.best) : '--'}</div></div>` :
+    `<div class="row" onclick="openDetail('${x.id}')"><div class="ic">⚡</div><div class="m"><div class="t">${esc(x.name)}</div><div class="s">${fmtDate(x.date)}${x.trap ? ' · trap ' + x.trap.toFixed(1) + ' km/h' : ''}</div></div><div class="r num">${(x.time / 1000).toFixed(2)} s</div></div>`).join('')
+    : '<div class="empty">Belum ada riwayat.<br>Tekan MULAI BALAPAN untuk mulai.</div>';
+}
+function bestForTrack(id) { const v = store.get('hist', []).filter(x => x.kind === 'track' && x.trackId === id && x.best).map(x => x.best); return v.length ? Math.min(...v) : null; }
+
+// ================= DETAIL =================
+// ================= DETAIL RIWAYAT (peta satelit + grafik) =================
+let D = null; // sesi yang dibuka
+function openDetail(id) {
+  const s = store.get('h_' + id, null); if (!s) { toast('Data sesi tidak ditemukan'); return; }
+  D = { s, tab: 'lap', sel: null, cursorD: null, map: null };
+  if (s.kind === 'track') { D.proc = new Proc({ gates: s.gates }); unpackPts(s.pts).forEach(p => D.proc.push(p)); D.sel = D.proc.best ? D.proc.laps.indexOf(D.proc.best) : null; }
+  $('#detTitle').textContent = s.kind === 'track' ? s.trackName : s.label;
+  $('#detSeg').style.display = s.kind === 'track' ? '' : 'none';
+  go('s-detail'); detTab(s.kind === 'track' ? 'lap' : 'drag');
+}
+const LEG_SPD = `<div class="legend" style="margin-top:8px"><span class="spdbar"></span><span>lambat → cepat</span><span>garis putus putih = finish · biru muda = sektor</span></div>`;
+const SCRUB_HTML = `<div class="scrubvals num" id="scVals"></div><input type="range" class="scrub" id="scrub" min="0" max="1000" value="0" step="1">`;
+function detTab(t) {
+  D.tab = t; $$('#detSeg button').forEach(b => b.classList.toggle('on', b.dataset.d === t));
+  const b = $('#detBody'), s = D.s, pr = D.proc;
+  if (t === 'drag') {
+    const hasMap = s.trace.length && s.trace[0].length >= 5;
+    b.innerHTML = `<div class="pad"><p class="note">${fmtDate(s.date)}</p>${dragResultHtml(s)}
+    ${hasMap ? `<div class="mapwrap"><canvas id="detMap" class="satmap" style="height:38vh"></canvas></div>` : ''}
+    ${SCRUB_HTML}
+    <h3>Kecepatan terhadap waktu</h3><canvas class="cv gr" id="grDrag" style="height:250px;touch-action:none"></canvas>
+    <h3>Titik waktu</h3><table class="t num">${s.ms.length ? '<tr><th>Titik</th><th class="r">Waktu</th><th class="r">Speed/Jarak</th></tr>' : ''}${s.ms.map(m => `<tr><td>${m.label}</td><td class="r">${(m.t / 1000).toFixed(2)} s</td><td class="r">${m.v != null ? m.v.toFixed(1) + ' km/h' : Math.round(m.d) + ' m'}</td></tr>`).join('')}</table></div>`;
+    const tr = s.trace; D.ser = { x: tr.map(v => v[0]), v: tr.map(v => v[1]), d: tr.map(v => v[2]) };
+    D.xMax = D.ser.x[D.ser.x.length - 1] || 1; if (D.cursorD == null) D.cursorD = D.xMax;
+    if (hasMap) { D.mapPts = tr.map(v => ({ lat: v[3], lon: v[4], spd: v[1], t: v[0], d: v[2] })); D.map = mapFor($('#detMap')); D.map.draw = drawDetMap; D.map.onTap = i => setCursor(D.mapPts[i].t); }
+    bindScrub(); bindChartScrub(); requestAnimationFrame(redrawDetail); return;
+  }
+  if (t === 'lap') {
+    const tb = pr.theoBest(), nS = pr.gates.length > 1 ? pr.gates.length : 0;
+    let h = `<div class="pad"><p class="note">${fmtDate(s.date)} · ${pr.laps.length} lap · ${(pr.pts[pr.pts.length - 1].d / 1000).toFixed(1)} km</p>
+    <div class="big3"><div class="box best"><div class="k">Best</div><div class="v num">${pr.best ? fmtLap(pr.best.time) : '--'}</div></div><div class="box"><div class="k">Teoritis</div><div class="v num">${tb ? fmtLap(tb) : '--'}</div></div><div class="box"><div class="k">Top</div><div class="v num">${Math.round(Math.max(...pr.pts.map(p => p.spd)))}</div></div></div>`;
+    if (!pr.gates.length) h += `<div class="empty">Garis finish belum diatur.<br><button class="btn red" style="margin-top:12px" onclick="openEditor('${s.id}')">Atur garis di peta</button></div>`;
+    else if (!pr.laps.length) h += `<div class="empty">Belum ada lap lengkap.</div>`;
+    else {
+      const sb = []; for (let k = 0; k < nS; k++) { const v = pr.laps.map(l => l.sectors[k]).filter(x => x != null); sb.push(v.length ? Math.min(...v) : null); }
+      h += `<table class="t num"><tr><th>#</th><th>Waktu</th>${Array.from({ length: nS }, (_, k) => `<th class="r">S${k + 1}</th>`).join('')}<th class="r">Top</th></tr>` +
+        pr.laps.map((l, i) => `<tr class="${D.sel === i ? 'sel' : ''}" onclick="D.sel=${i};D.cursorD=null;detTab('lap')"><td>${l.n}</td><td class="${l === pr.best ? 'best' : ''}">${fmtLap(l.time)}</td>${l.sectors.map((x, k) => `<td class="r ${x != null && x === sb[k] ? 'best' : ''}">${fmtSec(x)}</td>`).join('')}<td class="r">${Math.round(l.vmax)}</td></tr>`).join('') + '</table>';
+      h += '<p class="note" style="margin-top:10px">Ketuk lap untuk memilihnya di Peta & Grafik (dibandingkan dengan best lap).</p>';
+    }
+    b.innerHTML = h + '</div>'; return;
+  }
+  if (t === 'map' || t === 'graph') {
+    const isG = t === 'graph';
+    if (isG && !pr.laps.length) { b.innerHTML = '<div class="empty">Grafik per lap muncul setelah ada lap lengkap.<br>Atur garis finish dulu lewat menu ⋯</div>'; return; }
+    if (isG && D.sel == null) D.sel = pr.laps.indexOf(pr.best);
+    b.innerHTML = `<div class="pad"><select id="detLap">${lapOptions(isG)}</select>
+    <div class="mapwrap"><canvas id="detMap" class="satmap" style="height:${isG ? 34 : 54}vh"></canvas></div>
+    ${isG ? '' : LEG_SPD}
+    ${SCRUB_HTML}
+    ${isG ? `<div class="legend" style="margin:14px 0 4px"><span><i style="background:#4da3ff"></i>lap dipilih</span><span><i style="background:#b58cff"></i>best lap</span><span><i style="background:#7fd1ff;height:1px"></i>sektor</span></div>
+    <h3>Kecepatan</h3><canvas class="cv gr" id="grSpd" style="height:250px;touch-action:none"></canvas>
+    <h3>Selisih waktu dengan best lap</h3><canvas class="cv gr" id="grDel" style="height:170px;touch-action:none"></canvas>
+    <p class="note" style="margin-top:6px">Di atas 0 = lebih lambat dari best, di bawah 0 = lebih cepat.</p>
+    <h3>G-force</h3><canvas class="cv gr" id="grG" style="height:190px;touch-action:none"></canvas>
+    <div class="legend" style="margin-top:6px"><span><i style="background:#06b6d4"></i>G samping (kanan +)</span><span><i style="background:#f59e0b"></i>G rem + / gas −</span></div>` : ''}</div>`;
+    $('#detLap').onchange = e => { D.sel = e.target.value === '' ? null : +e.target.value; D.cursorD = null; D.map.fitNext = true; prepTrackSeries(); bindScrub(); $('#scrub').value = 0; redrawDetail(); };
+    D.map = mapFor($('#detMap')); D.map.fitNext = true; D.map.draw = drawDetMap;
+    D.map.onTap = i => setCursor(D.mapPts[i].d);
+    prepTrackSeries(); bindScrub(); if (isG) bindChartScrub();
+    requestAnimationFrame(redrawDetail);
+  }
+}
+function lapOptions(noAll) {
+  const pr = D.proc;
+  return (noAll ? '' : `<option value="" ${D.sel == null ? 'selected' : ''}>Semua data (${(pr.pts[pr.pts.length - 1].d / 1000).toFixed(1)} km)</option>`) + pr.laps.map((l, i) => `<option value="${i}" ${D.sel === i ? 'selected' : ''}>Lap ${l.n} — ${fmtLap(l.time)}${l === pr.best ? ' (best)' : ''}</option>`).join('');
+}
+// titik untuk peta + seri untuk grafik; jarak & waktu dihitung dari awal lap (atau awal sesi untuk "Semua data")
+function prepTrackSeries() {
+  const pr = D.proc, lap = D.sel != null ? pr.laps[D.sel] : null;
+  const i0 = lap ? lap.i0 : 0, i1 = lap ? lap.i1 : pr.pts.length, d0 = lap ? lap.d0 : pr.pts[0].d, t0 = lap ? lap.t0 : pr.pts[0].t;
+  D.mapPts = []; for (let k = i0; k < i1; k++) { const p = pr.pts[k]; D.mapPts.push({ lat: p.lat, lon: p.lon, spd: p.spd, gx: p.gx, gy: p.gy, d: p.d - d0, t: p.t - t0 }); }
+  D.ser = { x: D.mapPts.map(p => p.d), v: D.mapPts.map(p => p.spd), t: D.mapPts.map(p => p.t), gx: D.mapPts.map(p => p.gx), gy: D.mapPts.map(p => p.gy) };
+  D.ser.dl = lap && pr.bestProf ? D.mapPts.map(p => (p.t - interp(pr.bestProf.d, pr.bestProf.t, p.d)) / 1000) : null;
+  if (lap && pr.best) { const B = pr.best; D.best = { x: [], v: [] }; for (let k = B.i0; k < B.i1; k++) { D.best.x.push(pr.pts[k].d - B.d0); D.best.v.push(pr.pts[k].spd); } } else D.best = null;
+  // garis sektor: jarak saat sektor dilewati di lap ini
+  D.marks = [];
+  if (lap && lap.sectors.length && lap.sectors[0] != null) { let acc = 0; lap.sectors.slice(0, -1).forEach((st, k) => { acc += st; D.marks.push({ x: interp(D.ser.t, D.ser.x, acc), label: 'S' + (k + 1) }); }); }
+  D.xMax = Math.max(D.ser.x[D.ser.x.length - 1] || 1, D.best ? D.best.x[D.best.x.length - 1] : 0);
+  if (D.cursorD == null || D.cursorD > D.xMax) D.cursorD = 0;
+}
+function bindScrub() {
+  const sl = $('#scrub'); sl.max = Math.round(D.xMax); sl.step = D.s.kind === 'drag' ? 10 : 1;
+  sl.oninput = () => setCursor(+sl.value, true);
+}
+function bindChartScrub() {
+  $$('.gr').forEach(cv => { const f = e => { const r = cv.getBoundingClientRect(); setCursor(Math.max(0, Math.min(1, (e.clientX - r.left - CH.L) / (r.width - CH.L - CH.R))) * D.xMax); }; cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); f(e); }); cv.addEventListener('pointermove', e => e.buttons && f(e)); });
+}
+function setCursor(x, fromSlider) { D.cursorD = Math.max(0, Math.min(D.xMax, x)); if (!fromSlider && $('#scrub')) $('#scrub').value = Math.round(D.cursorD); redrawDetail(); }
+function redrawDetail() {
+  if (!D || !$('#scVals')) return;
+  if (D.map && $('#detMap')) D.map.draw();
+  const x = D.cursorD, S2 = D.ser;
+  if (D.s.kind === 'drag') {
+    $('#scVals').innerHTML = valBox('Timer', (x / 1000).toFixed(2) + ' s') + valBox('Speed', interp(S2.x, S2.v, x).toFixed(1) + ' km/h') + valBox('Jarak', Math.round(interp(S2.x, S2.d, x)) + ' m');
+    drawChart($('#grDrag'), [{ x: S2.x, y: S2.v, c: '#4da3ff', name: 'Speed', fill: 1 }], { xMax: D.xMax, cursor: x, xUnit: 's', unit: 'km/h', yMin0: 1, marks: D.s.ms.map(m => ({ x: m.t, label: m.label })) });
+    return;
+  }
+  const t = interp(S2.x, S2.t, x), v = interp(S2.x, S2.v, x), dl = S2.dl ? interp(S2.x, S2.dl, x) : null;
+  $('#scVals').innerHTML = valBox('Jarak', fmtDist(x)) + valBox(D.sel != null ? 'Timer lap' : 'Timer', fmtLap(t)) + valBox('Speed', v.toFixed(0) + ' km/h') +
+    (dl != null ? valBox('Δ best', fmtDelta(dl * 1000), dl <= 0 ? 'g' : 'b') : valBox('G', Math.hypot(interp(S2.x, S2.gx, x), interp(S2.x, S2.gy, x)).toFixed(2)));
+  if ($('#grSpd')) {
+    const sp = [{ x: S2.x, y: S2.v, c: '#4da3ff', name: 'Lap', fill: 1 }]; if (D.best && D.proc.laps[D.sel] !== D.proc.best) sp.unshift({ x: D.best.x, y: D.best.v, c: '#b58cff', name: 'Best', w: 2 });
+    drawChart($('#grSpd'), sp, { xMax: D.xMax, cursor: x, unit: 'km/h', marks: D.marks });
+    drawChart($('#grDel'), [{ x: S2.x, y: S2.dl || S2.x.map(() => 0), c: '#4da3ff', name: 'Δ', signFill: 1 }], { xMax: D.xMax, cursor: x, unit: 'detik', zero: 1, marks: D.marks, fmt: v => (v >= 0 ? '+' : '') + v.toFixed(2) + ' s' });
+    drawChart($('#grG'), [{ x: S2.x, y: S2.gx, c: '#06b6d4', name: 'Samping' }, { x: S2.x, y: S2.gy, c: '#f59e0b', name: 'Rem/Gas' }], { xMax: D.xMax, cursor: x, unit: 'g', zero: 1, marks: D.marks, fmt: v => v.toFixed(2) + ' g' });
+  }
+}
+function valBox(k, v, cls) { return `<div class="sv ${cls || ''}"><span>${k}</span><b>${v}</b></div>`; }
+function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m'; }
+function drawDetMap() {
+  const pts = D.mapPts; if (!pts || !pts.length) return;
+  const x = D.cursorD, key = D.s.kind === 'drag' ? 't' : 'd', xs = pts.map(p => p[key]);
+  const cur = { lat: interp(xs, pts.map(p => p.lat), x), lon: interp(xs, pts.map(p => p.lon), x) };
+  let label;
+  if (D.s.kind === 'drag') label = [(x / 1000).toFixed(2) + ' s', Math.round(interp(xs, pts.map(p => p.d), x)) + ' m · ' + interp(xs, pts.map(p => p.spd), x).toFixed(0) + ' km/h'];
+  else label = [fmtLap(interp(xs, pts.map(p => p.t), x)), fmtDist(x) + ' · ' + interp(xs, pts.map(p => p.spd), x).toFixed(0) + ' km/h'];
+  const showDist = D.s.kind === 'drag' || D.sel != null;
+  D.map.render(pts, D.s.kind === 'track' ? D.proc.gates : [], { cursor: cur, label, distOf: showDist ? i => pts[i].d : null, start: true });
+}
+function mapFor(cv) { return cv._mv || (cv._mv = new SatMap(cv)); }
+
+// ---------- grafik ----------
+const CH = { L: 44, R: 12, T: 14, B: 26 };
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function drawChart(cv, series, o) {
+  if (!cv) return;
+  const [c, W, H] = fitCanvas(cv), L = CH.L, Rr = CH.R, T = CH.T, B = CH.B, w = W - L - Rr, h = H - T - B;
+  let y0 = 1e9, y1 = -1e9; series.forEach(s => s.y.forEach(v => { if (isFinite(v)) { y0 = Math.min(y0, v); y1 = Math.max(y1, v); } }));
+  if (!isFinite(y0)) { y0 = 0; y1 = 1; }
+  if (o.zero) { const m = Math.max(Math.abs(y0), Math.abs(y1), 0.05) * 1.1; y0 = -m; y1 = m; }
+  else { const pad = (y1 - y0) * 0.08 || 1; y0 = o.yMin0 ? 0 : Math.max(0, y0 - pad); y1 = y1 + pad; }
+  const ys = niceStep(y1 - y0, 4); y0 = Math.floor(y0 / ys) * ys; y1 = Math.ceil(y1 / ys) * ys;
+  const xM = o.xMax || 1, X = x => L + x / xM * w, Y = y => T + h - (y - y0) / ((y1 - y0) || 1) * h;
+  const dec = ys < 0.1 ? 2 : ys < 1 ? 1 : 0;
+  c.font = '11px system-ui'; c.lineWidth = 1;
+  for (let v = y0; v <= y1 + ys / 2; v += ys) { const yy = Math.round(Y(v)) + .5; c.strokeStyle = Math.abs(v) < ys / 10 && o.zero ? 'rgba(255,255,255,.35)' : 'rgba(190,215,255,.09)'; c.beginPath(); c.moveTo(L, yy); c.lineTo(W - Rr, yy); c.stroke(); c.fillStyle = '#8fa3c4'; c.textAlign = 'right'; c.fillText(v.toFixed(dec), L - 6, yy + 4); }
+  const xs = niceStep(xM, 5); c.textAlign = 'center';
+  for (let v = 0; v <= xM; v += xs) { const xx = Math.round(X(v)) + .5; c.strokeStyle = 'rgba(190,215,255,.06)'; c.beginPath(); c.moveTo(xx, T); c.lineTo(xx, T + h); c.stroke(); c.fillStyle = '#8fa3c4'; c.fillText(o.xUnit === 's' ? (v / 1000).toFixed(v % 1000 ? 1 : 0) : v >= 1000 && xs >= 1000 ? (v / 1000) + 'k' : v, xx, H - 8); }
+  c.textAlign = 'left'; c.fillStyle = '#5f7396'; c.font = '10px system-ui'; c.fillText(o.xUnit === 's' ? 'dtk' : 'm', 4, H - 8); c.fillText(o.unit || '', L + 4, T + 10); c.font = '11px system-ui';
+  (o.marks || []).forEach(m => { const xx = X(m.x); c.strokeStyle = 'rgba(127,209,255,.55)'; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(xx, T); c.lineTo(xx, T + h); c.stroke(); c.setLineDash([]); c.fillStyle = '#7fd1ff'; c.font = 'bold 10px system-ui'; c.textAlign = 'center'; c.fillText(m.label, xx, T + 22); c.font = '11px system-ui'; });
+  c.save(); c.beginPath(); c.rect(L, T, w, h); c.clip();
+  series.forEach(s => {
+    const path = () => { c.beginPath(); s.x.forEach((x, i) => i ? c.lineTo(X(x), Y(s.y[i])) : c.moveTo(X(x), Y(s.y[i]))); };
+    if (s.fill) { path(); c.lineTo(X(s.x[s.x.length - 1]), T + h); c.lineTo(X(s.x[0]), T + h); c.closePath(); const g = c.createLinearGradient(0, T, 0, T + h); g.addColorStop(0, 'rgba(77,163,255,.35)'); g.addColorStop(1, 'rgba(77,163,255,0)'); c.fillStyle = g; c.fill(); }
+    if (s.signFill) { const z = Y(0); ['up', 'dn'].forEach(k => { c.save(); c.beginPath(); k === 'up' ? c.rect(L, T, w, z - T) : c.rect(L, z, w, T + h - z); c.clip(); path(); c.lineTo(X(s.x[s.x.length - 1]), z); c.lineTo(X(s.x[0]), z); c.closePath(); c.fillStyle = k === 'up' ? 'rgba(255,84,104,.28)' : 'rgba(43,212,127,.28)'; c.fill(); c.restore(); }); }
+    path(); c.strokeStyle = s.c; c.lineWidth = s.w || 2.6; c.lineJoin = 'round'; c.stroke();
+  });
+  c.restore();
+  if (o.cursor != null) {
+    const xx = X(o.cursor); c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(xx, T); c.lineTo(xx, T + h); c.stroke();
+    const rows = series.map(s => { const v = interp(s.x, s.y, o.cursor); c.fillStyle = s.c; c.beginPath(); c.arc(xx, Y(v), 4.5, 0, 7); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); return [s.c, (s.name ? s.name + ' ' : '') + (o.fmt ? o.fmt(v) : v.toFixed(0) + ' ' + (o.unit || ''))]; });
+    c.font = 'bold 12px system-ui'; const bw = Math.max(...rows.map(r => c.measureText(r[1]).width)) + 22, bh = rows.length * 17 + 8;
+    let bx = xx + 10; if (bx + bw > W - Rr) bx = xx - 10 - bw; const by = T + 4;
+    c.fillStyle = 'rgba(6,14,34,.88)'; c.strokeStyle = 'rgba(190,215,255,.25)'; c.lineWidth = 1; roundRect(c, bx, by, bw, bh, 8); c.fill(); c.stroke();
+    rows.forEach((r, i) => { c.fillStyle = r[0]; c.fillRect(bx + 8, by + 10 + i * 17, 6, 6); c.fillStyle = '#fff'; c.textAlign = 'left'; c.fillText(r[1], bx + 18, by + 17 + i * 17); });
+  }
+}
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function drawDragChart(cv, res) { const tr = res.trace; drawChart(cv, [{ x: tr.map(v => v[0]), y: tr.map(v => v[1]), c: '#4da3ff', fill: 1 }], { xMax: tr[tr.length - 1][0], xUnit: 's', unit: 'km/h', yMin0: 1, marks: res.ms.map(m => ({ x: m.t, label: m.label })) }); }
+
+// ---------- peta satelit (Web Mercator + ubin Esri World Imagery) ----------
+const TILE = { cache: new Map(), ok: 0, fail: 0 };
+function merc(lat, lon) { const s = Math.sin(lat * RAD); return [(lon + 180) / 360, 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)]; }
+function tileGet(z, x, y, cb) {
+  const k = z + '/' + x + '/' + y; let t = TILE.cache.get(k);
+  if (!t) {
+    t = { img: new Image(), ok: false, err: false };
+    t.img.onload = () => { t.ok = true; TILE.ok++; cb(); }; t.img.onerror = () => { t.err = true; TILE.fail++; cb(); };
+    t.img.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + y + '/' + x;
+    TILE.cache.set(k, t); if (TILE.cache.size > 500) TILE.cache.delete(TILE.cache.keys().next().value);
+  }
+  return t;
+}
+class SatMap {
+  constructor(cv) {
+    this.cv = cv; this.fitNext = true; this.cx = .5; this.cy = .5; this.s = 512; this.ptrs = new Map(); this.onTap = null; this.draw = () => { }; this.raf = 0;
+    cv.style.touchAction = 'none';
+    cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); this.ptrs.set(e.pointerId, [e.clientX, e.clientY]); this.moved = 0; this.pinch = null; });
+    cv.addEventListener('pointermove', e => {
+      if (!this.ptrs.has(e.pointerId)) return; const old = this.ptrs.get(e.pointerId); this.ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+      if (this.ptrs.size === 2) { const [a, b] = [...this.ptrs.values()], dd = Math.hypot(a[0] - b[0], a[1] - b[1]); if (this.pinch) this.zoom(dd / this.pinch, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); this.pinch = dd; this.moved = 99; }
+      else { const dx = e.clientX - old[0], dy = e.clientY - old[1]; this.cx -= dx / this.s; this.cy -= dy / this.s; this.moved += Math.abs(dx) + Math.abs(dy); }
+      this.soon();
+    });
+    const up = e => { if (this.ptrs.has(e.pointerId) && this.ptrs.size === 1 && this.moved < 8 && this.onTap) this.tap(e); this.ptrs.delete(e.pointerId); if (this.ptrs.size < 2) this.pinch = null; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => this.ptrs.delete(e.pointerId));
+    cv.addEventListener('wheel', e => { e.preventDefault(); this.zoom(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX, e.clientY); this.soon(); }, { passive: false });
+    cv.addEventListener('dblclick', () => { this.fitNext = true; this.soon(); });
+  }
+  soon() { if (this.raf) return; this.raf = requestAnimationFrame(() => { this.raf = 0; this.draw(); }); }
+  zoom(f, sx, sy) {
+    const r = this.cv.getBoundingClientRect(), px = sx - r.left - r.width / 2, py = sy - r.top - r.height / 2;
+    const mx = this.cx + px / this.s, my = this.cy + py / this.s;
+    this.s = Math.max(256 * 4, Math.min(256 * Math.pow(2, 21), this.s * f)); this.cx = mx - px / this.s; this.cy = my - py / this.s;
+  }
+  render(pts, gates, o) {
+    o = o || {}; const [c, W, H] = fitCanvas(this.cv); this.W = W; this.H = H;
+    c.fillStyle = '#0a1428'; c.fillRect(0, 0, W, H);
+    if (!pts || pts.length < 2) return;
+    const m = pts.map(p => merc(p.lat, p.lon));
+    if (this.fitNext) {
+      let x0 = 9, x1 = -9, y0 = 9, y1 = -9; m.forEach(v => { x0 = Math.min(x0, v[0]); x1 = Math.max(x1, v[0]); y0 = Math.min(y0, v[1]); y1 = Math.max(y1, v[1]); });
+      this.cx = (x0 + x1) / 2; this.cy = (y0 + y1) / 2; this.s = Math.min(256 * Math.pow(2, 19), (W - 48) / Math.max(x1 - x0, 1e-9), (H - 48) / Math.max(y1 - y0, 1e-9)); this.fitNext = false;
+    }
+    const S = v => [W / 2 + (v[0] - this.cx) * this.s, H / 2 + (v[1] - this.cy) * this.s];
+    const satOn = S0().sat !== '0';
+    if (satOn) this.tiles(c, W, H, S);
+    c.fillStyle = 'rgba(4,10,24,' + (satOn ? .22 : 0) + ')'; c.fillRect(0, 0, W, H);
+    const scr = m.map(S); this.scr = scr;
+    // jalur: bayangan gelap + warna kecepatan
+    let vmin = 1e9, vmax = -1e9; pts.forEach(p => { vmin = Math.min(vmin, p.spd); vmax = Math.max(vmax, p.spd); });
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = 'rgba(0,0,0,.7)'; c.lineWidth = 8; c.beginPath(); scr.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.stroke();
+    c.lineWidth = 4.5;
+    for (let i = 1; i < scr.length; i++) { c.strokeStyle = spdColor((pts[i].spd - vmin) / ((vmax - vmin) || 1)); c.beginPath(); c.moveTo(scr[i - 1][0], scr[i - 1][1]); c.lineTo(scr[i][0], scr[i][1]); c.stroke(); }
+    // tanda jarak sepanjang jalur
+    if (o.distOf) {
+      const ppm = this.s / (40075016.7 * Math.cos(pts[0].lat * RAD)), want = 80 / ppm;
+      const step = [25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000].find(v => v >= want) || 20000;
+      let next = step; c.font = 'bold 10px system-ui'; c.textAlign = 'left';
+      for (let i = 1; i < pts.length; i++) {
+        const d0 = o.distOf(i - 1), d1 = o.distOf(i);
+        while (d1 >= next && d0 < next) {
+          const f = (next - d0) / ((d1 - d0) || 1), qx = scr[i - 1][0] + f * (scr[i][0] - scr[i - 1][0]), qy = scr[i - 1][1] + f * (scr[i][1] - scr[i - 1][1]);
+          c.fillStyle = '#fff'; c.strokeStyle = '#0a1e46'; c.lineWidth = 2; c.beginPath(); c.arc(qx, qy, 3.5, 0, 7); c.fill(); c.stroke();
+          const txt = next >= 1000 ? (next / 1000) + ' km' : next + ' m', tw = c.measureText(txt).width;
+          c.fillStyle = 'rgba(6,14,34,.8)'; roundRect(c, qx + 6, qy - 8, tw + 8, 15, 4); c.fill(); c.fillStyle = '#eaf3ff'; c.fillText(txt, qx + 10, qy + 3);
+          next += step;
+        }
+        if (d1 >= next + step * 1000) break;
+      }
+    }
+    // garis finish & sektor
+    (gates || []).forEach((g, i) => {
+      const gg = g.A ? g : prepGate(g), ll = v => merc(g.lat + v[1] / (R * RAD), g.lon + v[0] / (R * RAD * Math.cos(g.lat * RAD)));
+      const a = S(ll(gg.A)), b = S(ll(gg.B));
+      c.lineCap = 'butt'; c.strokeStyle = 'rgba(0,0,0,.7)'; c.lineWidth = i === 0 ? 8 : 6; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
+      c.strokeStyle = i === 0 ? '#fff' : '#7fd1ff'; c.lineWidth = i === 0 ? 5 : 3.5; c.setLineDash(i === 0 ? [5, 5] : []); c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); c.setLineDash([]); c.lineCap = 'round';
+      const t = i === 0 ? 'FINISH' : 'S' + i; c.font = 'bold 10px system-ui'; const tw = c.measureText(t).width;
+      let lx = b[0] + 5; if (lx + tw + 10 > W - 4) lx = b[0] - tw - 15; c.fillStyle = i === 0 ? '#fff' : '#7fd1ff'; roundRect(c, lx, b[1] - 8, tw + 10, 16, 5); c.fill(); c.fillStyle = '#0a1e46'; c.textAlign = 'left'; c.fillText(t, lx + 5, b[1] + 4);
+    });
+    if (o.start && !(gates && gates.length)) { const q = scr[0]; c.fillStyle = '#2bd47f'; c.beginPath(); c.arc(q[0], q[1], 6, 0, 7); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke(); }
+    // posisi kursor + label timer/jarak
+    if (o.cursor) {
+      const q = S(merc(o.cursor.lat, o.cursor.lon));
+      c.fillStyle = 'rgba(77,163,255,.3)'; c.beginPath(); c.arc(q[0], q[1], 16, 0, 7); c.fill();
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(q[0], q[1], 8, 0, 7); c.fill(); c.strokeStyle = '#2f7bff'; c.lineWidth = 4; c.stroke();
+      if (o.label) {
+        c.font = 'bold 15px system-ui'; const w1 = c.measureText(o.label[0]).width; c.font = '11px system-ui'; const w2 = c.measureText(o.label[1]).width;
+        const bw = Math.max(w1, w2) + 20, bh = 42; let bx = q[0] - bw / 2, by = q[1] - bh - 20;
+        bx = Math.max(6, Math.min(W - bw - 6, bx)); if (by < 6) by = q[1] + 22;
+        c.fillStyle = 'rgba(6,14,34,.92)'; c.strokeStyle = 'rgba(124,192,255,.7)'; c.lineWidth = 1.2; roundRect(c, bx, by, bw, bh, 10); c.fill(); c.stroke();
+        c.textAlign = 'center'; c.fillStyle = '#fff'; c.font = 'bold 15px system-ui'; c.fillText(o.label[0], bx + bw / 2, by + 18); c.fillStyle = '#9fc6ff'; c.font = '11px system-ui'; c.fillText(o.label[1], bx + bw / 2, by + 34); c.textAlign = 'left';
+      }
+    }
+    // keterangan
+    c.font = '9px system-ui'; c.textAlign = 'right';
+    if (satOn) {
+      const off = TILE.ok === 0 && TILE.fail > 0, t = off ? 'Peta satelit butuh internet' : 'Citra © Esri, Maxar, Earthstar Geographics';
+      const tw = c.measureText(t).width; c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(W - tw - 10, H - 15, tw + 10, 15); c.fillStyle = off ? '#ffd27a' : '#cfdcef'; c.fillText(t, W - 5, H - 4);
+    }
+    c.textAlign = 'left';
+  }
+  tiles(c, W, H, S) {
+    let z = Math.round(Math.log2(this.s / 256)); z = Math.max(1, Math.min(19, z)); const n = Math.pow(2, z), ts = this.s / n;
+    const xa = Math.floor((this.cx - W / 2 / this.s) * n), xb = Math.floor((this.cx + W / 2 / this.s) * n), ya = Math.floor((this.cy - H / 2 / this.s) * n), yb = Math.floor((this.cy + H / 2 / this.s) * n);
+    if ((xb - xa + 1) * (yb - ya + 1) > 80) return;
+    for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) {
+      if (y < 0 || y >= n) continue; const xm = ((x % n) + n) % n, p = S([x / n, y / n]);
+      const t = tileGet(z, xm, y, () => this.soon());
+      if (t.ok) { c.drawImage(t.img, p[0], p[1], ts + .7, ts + .7); continue; }
+      // sementara pakai ubin zoom sebelumnya yang sudah ada (diperbesar)
+      for (let up = 1; up <= 4 && z - up >= 1; up++) {
+        const f = Math.pow(2, up), px = Math.floor(xm / f), py = Math.floor(y / f), pt = TILE.cache.get((z - up) + '/' + px + '/' + py);
+        if (pt && pt.ok) { const sub = 256 / f; c.drawImage(pt.img, (xm % f) * sub, (y % f) * sub, sub, sub, p[0], p[1], ts + .7, ts + .7); break; }
+      }
+    }
+  }
+  tap(e) {
+    if (!this.scr) return; const r = this.cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; let bi = -1, bd = 1e9;
+    this.scr.forEach((s, i) => { const d = (s[0] - x) ** 2 + (s[1] - y) ** 2; if (d < bd) { bd = d; bi = i; } });
+    if (bi >= 0 && bd < 44 * 44) this.onTap(bi); else toast('Ketuk tepat di jalur');
+  }
+}
+function S0() { return S.set; }
+
+function detMenu() {
+  const s = D.s;
+  openSheet(`<h2>${esc(s.kind === 'track' ? s.trackName : s.label)}</h2><div class="btns" style="flex-direction:column">
+  ${s.kind === 'track' ? `<button class="btn" onclick="closeSheet();openEditor('${s.id}')">Atur garis finish / sektor</button>` : ''}
+  <button class="btn" onclick="exportSess()">Export CSV</button>
+  <button class="btn" onclick="renameSess()">Ganti nama</button>
+  <button class="btn" style="color:var(--bad)" onclick="delSess()">Hapus sesi</button></div>`);
+}
+async function renameSess() {
+  const s = D.s, cur = s.kind === 'track' ? s.trackName : s.label, n = await ask('Nama sesi', { input: cur, yes: 'Simpan' }); if (!n) return;
+  if (s.kind === 'track') s.trackName = n; else s.label = n; store.set('h_' + s.id, s);
+  const h = store.get('hist', []), x = h.find(x => x.id === s.id); if (x) x.name = n; store.set('hist', h);
+  $('#detTitle').textContent = n; closeSheet();
+}
+async function delSess() { if (!await ask('Hapus sesi ini?', { yes: 'Hapus', danger: 1 })) return; store.del('h_' + D.s.id); store.set('hist', store.get('hist', []).filter(x => x.id !== D.s.id)); closeSheet(); back(); renderHistory(); }
+async function download(name, text, type) {
+  if (NATIVE) { nat('saveFile', name, text); return; }
+  if (window.claude && window.claude.use) { try { const dl = await window.claude.use('downloads'); if (dl) { await dl.save({ filename: name, data: text }); return; } } catch (e) { toast('Download dibatalkan'); return; } }
+  downloadA(name, text, type);
+}
+function downloadA(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+function exportSess() {
+  const s = D.s, nm = (s.kind === 'track' ? s.trackName : s.label).replace(/[^\w-]+/g, '_') + '_' + new Date(s.date).toISOString().slice(0, 10);
+  if (s.kind === 'track') {
+    let csv = 't_ms,lat,lon,speed_kmh,heading,sats,g_lat,g_long\n' + s.pts.map(v => v.join(',')).join('\n');
+    const pr = D.proc; csv += '\n\n# lap,waktu,sektor...\n' + pr.laps.map(l => '# ' + l.n + ',' + fmtLap(l.time) + ',' + l.sectors.map(x => fmtSec(x, 3)).join(',')).join('\n');
+    download(nm + '.csv', csv);
+  } else download(nm + '.csv', 't_ms,speed_kmh,dist_m\n' + s.trace.map(v => v.join(',')).join('\n'));
+  closeSheet();
+}
+function importFile(f) {
+  if (!f) return; const rd = new FileReader();
+  rd.onload = async () => {
+    const txt = String(rd.result);
+    if (f.name.endsWith('.json')) {
+      try { const o = JSON.parse(txt); if (!o.rs16) throw 0; if (!await ask('Restore backup? Data yang sama akan ditimpa.', { yes: 'Restore' })) return; Object.keys(o.data).forEach(k => localStorage.setItem(k, o.data[k])); toast('Backup dipulihkan'); location.reload(); } catch (e) { toast('File backup tidak valid'); }
+      return;
+    }
+    const pts = []; txt.split(/\r?\n/).forEach(l => { const p = parseLine(l); if (p && !p.nofix) pts.push(p); });
+    if (pts.length < 20) { toast('Tidak ada data RS16 di file ini'); return; }
+    const pr = new Proc(null); pts.forEach(p => pr.push(p));
+    const c = pr.pts[0], tr = getTracks().filter(t => trackCenter(t) && dist(c, trackCenter(t)) < 3000)[0];
+    if (tr) pr.rebuild(tr);
+    const id = saveTrackSession({ t0: f.lastModified || Date.now(), track: tr || { id: null, name: f.name.replace(/\.\w+$/, ''), gates: [] }, proc: pr });
+    if (id) { toast('Diimpor: ' + pts.length + ' titik'); renderHistory(); openDetail(id); }
+  };
+  rd.readAsText(f);
+}
+function backupAll() { const data = {}; store.keys().forEach(k => data[k] = localStorage.getItem(k)); download('rs16_backup_' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ rs16: 1, data }), 'application/json'); }
+async function wipeAll() { if (!await ask('Hapus SEMUA track, sesi dan pengaturan?', { yes: 'Hapus semua', danger: 1 })) return; store.keys().forEach(k => localStorage.removeItem(k)); location.reload(); }
+
+// ================= EDITOR GARIS =================
+let E = null;
+function openEditor(sessId) {
+  const s = store.get('h_' + sessId, null); if (!s) return;
+  const pts = unpackPts(s.pts), pr = new Proc(null); pts.forEach(p => pr.push(p));
+  const tr = (s.trackId && trackById(s.trackId)) || { id: s.trackId || uid(), name: s.trackName, gates: [], created: Date.now() };
+  E = { s, pts: pr.pts, gates: JSON.parse(JSON.stringify(s.gates && s.gates.length ? s.gates : tr.gates || [])), tr, mode: 'F' };
+  $('#edName').value = tr.name || s.trackName; go('s-edit'); edMode(E.gates.length ? 'S' : 'F');
+  const cv = $('#edMap'); E.map = mapFor(cv); E.map.fitNext = true; E.map.draw = () => E.map.render(E.pts, E.gates.map(prepGate), null);
+  E.map.onTap = i => {
+    const p = E.pts[i]; const g = { lat: p.lat, lon: p.lon, hdg: headingAt(E.pts, i), w: S.set.gateW, type: E.mode };
+    if (E.mode === 'F') { E.gates[0] = g; toast('Garis finish dipasang'); edMode('S'); } else { if (!E.gates.length) { toast('Pasang garis Finish dulu'); return; } E.gates.push(g); toast('Sektor ' + (E.gates.length - 1)); }
+    E.map.draw();
+  };
+  requestAnimationFrame(() => E.map.draw());
+}
+function edMode(m) { E.mode = m; $('#edF').classList.toggle('on', m === 'F'); $('#edS').classList.toggle('on', m === 'S'); }
+function edUndo() { if (E.gates.length > 1) { E.gates.pop(); E.map.draw(); } else toast('Tidak ada sektor'); }
+function saveEdit() {
+  if (!E.gates.length) { toast('Pasang garis Finish dulu'); return; }
+  const tr = E.tr; tr.name = $('#edName').value.trim() || tr.name || 'Track'; tr.gates = E.gates; tr.lat = E.gates[0].lat; tr.lon = E.gates[0].lon; upsertTrack(tr);
+  const s = E.s; s.gates = E.gates; s.trackId = tr.id; s.trackName = tr.name; store.set('h_' + s.id, s);
+  const pr = new Proc({ gates: s.gates }); unpackPts(s.pts).forEach(p => pr.push(p));
+  const h = store.get('hist', []), i = h.findIndex(x => x.id === s.id); if (i >= 0) h[i] = summTrack(s, pr); store.set('hist', h);
+  toast(pr.laps.length + ' lap terdeteksi'); S.stack.pop(); S.stack.pop(); openDetail(s.id);
+}
+
+// ================= TROPHY =================
+function openTrophy() {
+  const h = store.get('hist', []); let html = '<h3 style="padding:0 18px">Best lap per track</h3>';
+  const byT = {}; h.filter(x => x.kind === 'track' && x.best).forEach(x => { const k = x.trackId || x.name; if (!byT[k] || x.best < byT[k].best) byT[k] = x; });
+  const tl = Object.values(byT);
+  html += tl.length ? '<div class="list">' + tl.map(x => `<div class="row" onclick="openDetail('${x.id}')"><div class="ic">🏆</div><div class="m"><div class="t">${esc(x.name)}</div><div class="s">${fmtDate(x.date)}</div></div><div class="r num" style="color:var(--best)">${fmtLap(x.best)}</div></div>`).join('') + '</div>' : '<div class="empty">Belum ada lap.</div>';
+  html += '<h3 style="padding:0 18px">Speed / drag</h3>';
+  const byD = {}; h.filter(x => x.kind === 'drag').forEach(x => { if (!byD[x.name] || x.time < byD[x.name].time) byD[x.name] = x; });
+  const dl = Object.values(byD);
+  html += dl.length ? '<div class="list">' + dl.map(x => `<div class="row" onclick="openDetail('${x.id}')"><div class="ic">⚡</div><div class="m"><div class="t">${esc(x.name)}</div><div class="s">${fmtDate(x.date)}</div></div><div class="r num">${(x.time / 1000).toFixed(2)} s</div></div>`).join('') + '</div>' : '<div class="empty">Belum ada rekor speed.</div>';
+  $('#trophyBody').innerHTML = html; go('s-trophy');
+}
+
+// ================= GAMBAR =================
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1, w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const c = cv.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, r.width, r.height); return [c, r.width, r.height];
+}
+function spdColor(k) { k = Math.max(0, Math.min(1, k)); const stops = [[37, 99, 235], [16, 185, 129], [245, 158, 11], [229, 56, 59]]; const x = k * 3, i = Math.min(2, Math.floor(x)), f = x - i, a = stops[i], b = stops[i + 1]; return `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * f)).join(',')})`; }
+function project(pts, W, H, pad, view) {
+  if (!pts.length) return null;
+  const ref = pts[0]; let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; const xy = pts.map(p => { const v = rel(ref, p); x0 = Math.min(x0, v[0]); x1 = Math.max(x1, v[0]); y0 = Math.min(y0, v[1]); y1 = Math.max(y1, v[1]); return v; });
+  const sc = Math.min((W - 2 * pad) / Math.max(x1 - x0, 20), (H - 2 * pad) / Math.max(y1 - y0, 20)) * (view ? view.z : 1);
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, ox = W / 2 + (view ? view.px : 0), oy = H / 2 + (view ? view.py : 0);
+  const f = v => [ox + (v[0] - cx) * sc, oy - (v[1] - cy) * sc];
+  return { ref, f, scr: xy.map(f), sc, P: p => f(rel(ref, p)) };
+}
+function drawTrace(c, pr, pts) {
+  let vmin = 1e9, vmax = -1e9; pts.forEach(p => { vmin = Math.min(vmin, p.spd); vmax = Math.max(vmax, p.spd); });
+  c.lineWidth = 3; c.lineCap = 'round';
+  for (let i = 1; i < pts.length; i++) { c.strokeStyle = spdColor((pts[i].spd - vmin) / ((vmax - vmin) || 1)); c.beginPath(); c.moveTo(pr.scr[i - 1][0], pr.scr[i - 1][1]); c.lineTo(pr.scr[i][0], pr.scr[i][1]); c.stroke(); }
+}
+function drawGates(c, pr, gates) {
+  gates.forEach((g, i) => {
+    const gg = g.A ? g : prepGate(g), a = pr.f(rel(pr.ref, { lat: g.lat, lon: g.lon }).map((v, j) => v + gg.A[j])), b = pr.f(rel(pr.ref, { lat: g.lat, lon: g.lon }).map((v, j) => v + gg.B[j]));
+    c.lineWidth = i === 0 ? 5 : 3; c.strokeStyle = i === 0 ? '#ffffff' : '#7fd1ff'; c.setLineDash(i === 0 ? [4, 4] : []);
+    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); c.setLineDash([]);
+    c.fillStyle = i === 0 ? '#ffffff' : '#7fd1ff'; c.font = 'bold 12px system-ui'; c.fillText(i === 0 ? '🏁' : 'S' + i, b[0] + 4, b[1] + 4);
+  });
+}
+function drawMapSimple(cv, pts, gates, pos) {
+  const [c, W, H] = fitCanvas(cv);
+  if (pts.length < 2) { c.fillStyle = '#666'; c.font = '13px system-ui'; c.textAlign = 'center'; c.fillText('Peta muncul saat jalan', W / 2, H / 2); c.textAlign = 'left'; return; }
+  const step = Math.max(1, Math.floor(pts.length / 1500)), sp = step > 1 ? pts.filter((_, i) => i % step === 0) : pts;
+  const pr = project(sp, W, H, 12); drawTrace(c, pr, sp); drawGates(c, pr, gates);
+  if (pos) { const q = pr.P(pos); c.fillStyle = '#4da3ff'; c.beginPath(); c.arc(q[0], q[1], 6, 0, 7); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 3; c.stroke(); }
+}
+function drawG(cv, trail, p) {
+  const [c, W, H] = fitCanvas(cv), cx = W / 2, cy = H / 2 + 6, R0 = Math.min(W, H) / 2 - 16, sc = R0 / 1.5;
+  c.strokeStyle = 'rgba(190,215,255,.16)'; c.lineWidth = 1; [0.5, 1, 1.5].forEach(g => { c.beginPath(); c.arc(cx, cy, g * sc, 0, 7); c.stroke(); });
+  c.beginPath(); c.moveTo(cx - R0, cy); c.lineTo(cx + R0, cy); c.moveTo(cx, cy - R0); c.lineTo(cx, cy + R0); c.stroke();
+  c.fillStyle = '#8fa3c4'; c.font = '10px system-ui'; c.fillText('REM', cx + 3, cy - R0 + 8); c.fillText('GAS', cx + 3, cy + R0 - 2); c.fillText('1g', cx + sc + 2, cy - 2);
+  trail.forEach((g, i) => { c.fillStyle = `rgba(77,163,255,${i / trail.length * 0.5})`; c.beginPath(); c.arc(cx + g[0] * sc, cy + g[1] * sc, 3, 0, 7); c.fill(); });
+  if (p) { c.fillStyle = '#ffffff'; c.shadowColor = '#4da3ff'; c.shadowBlur = 12; c.beginPath(); c.arc(cx + p.gx * sc, cy + p.gy * sc, 7, 0, 7); c.fill(); c.shadowBlur = 0; c.fillStyle = '#f4f8ff'; c.font = 'bold 13px system-ui'; c.fillText(Math.hypot(p.gx, p.gy).toFixed(2) + ' g', 8, 18); }
+}
+window.addEventListener('resize', () => { dirty = true; if (D && S.stack[S.stack.length - 1] === 's-detail') redrawDetail(); if (E && E.map) E.map.draw(); });
+
+
+// ================= UPDATE TAMPILAN & FIRMWARE =================
+S.dev = null; S.webUpd = null; S.fw = null; // S.fw = firmware siap dipasang {src:'net'|'file', ver, notes, name, size, file?}
+onShow['s-update'] = () => {
+  $('#otaPass').value = S.set.otaPass || 'RS160016';
+  if (NATIVE && !S.fw) { try { const p = JSON.parse(nat('fwPending') || 'null'); if (p) S.fw = { src: p.src, ver: p.ver, notes: p.notes, name: p.name, size: p.size }; } catch (e) { } }
+  renderUpdate();
+};
+function devHost() { try { return new URL(Conn.url || $('#wsUrl').value).hostname || '192.168.4.1'; } catch (e) { return '192.168.4.1'; } }
+function onDevicePage() { return !NATIVE && location.protocol === 'http:' && !!location.hostname && !/^(localhost|127\.)/.test(location.hostname); } // 1.1.2: APK (http://app.rs16/) bukan halaman dari alat
+function canFlash() { return !!NATIVE || onDevicePage(); }
+function kv(k, v) { return `<div class="kvrow"><span>${k}</span><b>${v}</b></div>`; }
+function renderUpdate() {
+  if (!$('#upWeb')) return;
+  const info = NATIVE ? JSON.parse(nat('info') || '{}') : {};
+  let w = (NATIVE ? kv('Aplikasi (APK)', 'v' + (info.app || '?')) : '') + kv('Tampilan', 'v' + APP_VER);
+  if (NATIVE) {
+    if (S.webUpd && S.webUpd.state === 'ready') w += `<div class="upbtns"><button class="btn red" onclick="nat('reload')">Muat tampilan baru v${esc(S.webUpd.ver)}</button></div>`;
+    else w += `<div class="upbtns"><button class="btn" onclick="checkWebUpd()">${S.webUpd && S.webUpd.state === 'checking' ? 'Mengecek…' : 'Cek update tampilan'}</button></div>` + (S.webUpd ? `<p class="note" style="margin-top:8px">${esc(webUpdMsg(S.webUpd))}</p>` : '');
+  } else w += `<p class="note" style="margin-top:8px">${onDevicePage() ? 'Tampilan ini tertanam di firmware alat, jadi ikut ter-update saat firmware alat di-update.' : 'Tampilan versi web. Untuk update otomatis seperti aplikasi HP, pakai APK RS16.'}</p>`;
+  $('#upWeb').innerHTML = w;
+  const conn = Conn.status === 'on' && Conn.type === 'ws';
+  let f = kv('Versi di alat', S.dev ? 'v' + esc(S.dev.fw) : (conn ? 'menunggu…' : 'belum tersambung')) + kv('Koneksi', conn ? 'WiFi ' + devHost() : 'putus');
+  if (S.fw) f += kv(S.fw.src === 'net' ? 'Firmware baru' : 'File dipilih', (S.fw.ver ? 'v' + esc(S.fw.ver) + ' · ' : '') + esc(S.fw.name || '') + (S.fw.size ? ' · ' + Math.round(S.fw.size / 1024) + ' KB' : '')) + (S.fw.notes ? `<p class="note" style="margin:4px 0 0">${esc(S.fw.notes)}</p>` : '');
+  f += '<div class="upbtns">';
+  if (NATIVE) f += `<button class="btn" onclick="checkFw()">${S.fwChecking ? 'Mengecek…' : 'Cek firmware baru di internet'}</button>`;
+  if (canFlash()) f += `<button class="btn" onclick="pickFw()">Pilih file firmware (.bin) dari HP</button>`;
+  if (S.fw && canFlash()) {
+    const older = S.dev && S.fw.ver && verCmp(S.fw.ver, S.dev.fw) <= 0;
+    f += `<button class="btn red" ${conn || onDevicePage() || NATIVE ? '' : 'disabled style="opacity:.5"'} onclick="flashFw()">Pasang ke alat${older ? ' (versi sama/lebih lama)' : ''}</button>`;
+  }
+  f += '</div>';
+  if (!canFlash()) f += `<p class="note" style="margin-top:10px">Update firmware bisa dilakukan dari APK RS16, atau dari aplikasi yang dibuka langsung dari alat (http://192.168.4.1).</p>`;
+  else if (!conn && !onDevicePage()) f += `<p class="note" style="margin-top:10px">Alat belum terdeteksi (firmware lama V36.8 belum bisa tersambung ke aplikasi, itu normal). Untuk memasang: di alat nyalakan <b>APPLICATION → WI-FI</b>, sambungkan HP ke WiFi <b>RS16_0016</b>, matikan data seluler sementara, lalu tekan <b>Pasang ke alat</b>.</p>`;
+  $('#upFw').innerHTML = f;
+}
+function webUpdMsg(u) { return ({ none: 'Tampilan sudah versi terbaru.', error: 'Gagal mengecek. Pastikan HP terhubung ke internet (bukan WiFi alat).', noconfig: 'Alamat server update belum diatur di APK.', checking: 'Mengecek…' })[u.state] || ''; }
+function checkWebUpd() { S.webUpd = { state: 'checking' }; renderUpdate(); nat('checkWebUpdate'); }
+window.onWebUpdate = (state, ver) => {
+  S.webUpd = { state, ver }; renderUpdate();
+  if (state === 'ready' && !S.run) ask('Tampilan baru v' + ver + ' sudah diunduh. Muat sekarang?', { yes: 'Muat sekarang', no: 'Nanti' }).then(ok => ok && nat('reload'));
+};
+function checkFw() { S.fwChecking = 1; renderUpdate(); nat('checkFirmware'); }
+window.onFwInfo = json => {
+  S.fwChecking = 0; let o = {}; try { o = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { }
+  if (o.state === 'ready' || o.state === 'picked') { S.fw = { src: o.state === 'ready' ? 'net' : 'file', ver: o.ver, notes: o.notes, name: o.name, size: o.size }; if (o.state === 'ready') toast('Firmware v' + o.ver + ' sudah diunduh'); fwOffer(); }
+  else if (o.state === 'none') toast('Belum ada firmware baru di server');
+  else if (o.state === 'noconfig') toast('Alamat server update belum diatur di APK');
+  else if (o.state === 'bad') toast('File bukan firmware ESP32 (.bin)');
+  else if (o.state === 'error') toast('Gagal mengecek. Pastikan HP terhubung ke internet');
+  renderUpdate();
+};
+function pickFw() { if (NATIVE) nat('pickFirmware'); else $('#fwFile').click(); }
+async function fwPickedBrowser(file) {
+  if (!file) return; const head = new Uint8Array(await file.slice(0, 1).arrayBuffer());
+  if (head[0] !== 0xE9) { toast('File bukan firmware ESP32 (.bin)'); return; }
+  S.fw = { src: 'file', name: file.name, size: file.size, file }; renderUpdate();
+}
+async function flashFw() {
+  if (!S.fw) return; if (S.run) { toast('Selesaikan balapan dulu'); return; }
+  if (!await ask('Pasang firmware ' + (S.fw.ver ? 'v' + S.fw.ver : S.fw.name) + ' ke alat RS16?' + (Conn.status === 'on' ? '' : ' Pastikan HP sudah tersambung ke WiFi alat.'), { yes: 'Pasang' })) return;
+  const pass = S.set.otaPass || 'RS160016';
+  $('#fwProg').style.display = ''; onFwProgress(0); S.flashing = 1;
+  if (NATIVE) { nat('flashFirmware', devHost(), 'rs16', pass); return; }
+  const fd = new FormData(); fd.append('update', S.fw.file, S.fw.name);
+  const x = new XMLHttpRequest(); x.open('POST', '/update');
+  x.setRequestHeader('Authorization', 'Basic ' + btoa('rs16:' + pass));
+  x.upload.onprogress = e => e.lengthComputable && onFwProgress(e.loaded / e.total * 100);
+  x.onload = () => onFwDone(x.status === 200, x.status === 401 ? 'Password salah' : x.status === 200 ? '' : 'Alat menolak firmware (' + x.status + ')');
+  x.onerror = () => onFwDone(false, 'Koneksi ke alat terputus');
+  x.send(fd);
+}
+window.onFwProgress = p => { if ($('#fwBar')) { $('#fwBar').style.width = p.toFixed(0) + '%'; $('#fwMsg').textContent = p >= 100 ? 'Menulis ke alat…' : 'Mengirim ' + p.toFixed(0) + '%'; } };
+window.onFwDone = (ok, msg) => {
+  S.flashing = 0; $('#fwMsg').textContent = ok ? 'Berhasil. Alat restart, tunggu ±10 detik lalu sambung ulang.' : 'Gagal: ' + (msg || 'tidak diketahui');
+  if (ok) { $('#fwBar').style.width = '100%'; vib(200); S.dev = null; toast('Firmware terpasang, alat restart'); if (Conn.type === 'ws') setTimeout(() => Conn.ws(Conn.url, true), 8000); }
+  else toast('Update firmware gagal');
+};
+// tawarkan update saat alat tersambung dan ada firmware lebih baru yang sudah diunduh
+function fwOffer() {
+  if (!S.dev || !NATIVE || S.run || S.fwOffered) return;
+  let p = null; try { p = JSON.parse(nat('fwPending') || 'null'); } catch (e) { }
+  if (p && p.ver && verCmp(p.ver, S.dev.fw) > 0) {
+    S.fw = S.fw || { src: 'net', ver: p.ver, notes: p.notes, name: p.name, size: p.size }; S.fwOffered = 1;
+    ask('Firmware baru v' + p.ver + ' tersedia untuk alat (sekarang v' + S.dev.fw + '). Buka menu update?', { yes: 'Buka', no: 'Nanti' }).then(ok => ok && go('s-update'));
+  }
+}
+
+// ================= START =================
+(function init() {
+  const info = NATIVE ? JSON.parse(nat('info') || '{}') : {};
+  $('#homeVer').textContent = 'RS16 Race Speed v' + (info.app || APP_VER) + (info.app && info.app !== APP_VER ? ' · tampilan v' + APP_VER : '');
+  $('#infoVer').textContent = $('#homeVer').textContent;
+  onShow['s-home']();
+  if (!NATIVE && location.protocol === 'http:' && location.hostname && !/^(localhost|127\.)/.test(location.hostname)) { // 1.1.2: jangan anggap app.rs16 sebagai alat
+    const u = 'ws://' + location.hostname + ':81/'; $('#wsUrl').value = u; Conn.ws(u); // dibuka dari alat -> langsung sambung WiFi
+  } else if (NATIVE) {
+    Conn.ws($('#wsUrl').value, true); // APK: coba sambung ke alat diam-diam (3x)
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
