@@ -1,4 +1,7 @@
 /*
+  RS16 V36.9.8 (24 Nov 2026): GNSS UPDATE RATE bisa dipilih lagi (perintah pemilik): 15 HZ = 0,06 s, 25 HZ = 0,04 s
+    (gnssPickRateV40 diubah atas perintah itu). IMU: deteksi juga di SPI 100 kHz; layar SENSOR INFO saat
+    IMU tidak ada -> tekan START = diagnosa (jalur CS/MISO, SPI 4 mode x 3 kecepatan, I2C) + kesimpulan.
   RS16 V36.9.7 (24 Nov 2026): pencarian satelit GPS dikembalikan ke V36.8 asli (perintah pemilik): mode cari 1 Hz
     dan kirim-balik data satelit tersimpan (MGA-DBD) dihapus. Modul GPS selalu di rate normal 0,04 s / 0,06 s.
   RS16 V36.9.6 (24 Nov 2026): cocok dengan aplikasi "RS16 Race Speed" 1.2.0 -- tombol "Ambil semua data dari alat":
@@ -537,21 +540,22 @@ static void serviceGpsScanV40(){
 // Dulu configureMg90225HzV30() hardcode 25Hz dan SELALU menimpa balik setting user
 // tiap kali dipanggil (boot, recovery PVT, perintah serial) -> pilihan 10 Hz tidak
 // pernah bertahan setelah restart.
-static uint8_t gnssUpdateRateIdxV36 = 1;   // V36.8: 0 = 0,06 s (16,7 Hz), 1 = 0,04 s (25 Hz)
+static uint8_t gnssUpdateRateIdxV36 = 1;   // V36.9.8 pilihan pemilik: 0 = 15 HZ (0,06 s), 1 = 25 HZ (0,04 s). NVS "grate"
 static uint8_t gnssSystemIdxV36 = 0;       // lihat GNSS_SYSTEM_NAME_V36 -- bawaan GPS + GLONASS (12 Nov 2026)
 static void applyGnssSystemV36();          // forward decl -- dipakai di configureMg90225HzV30()
 
-// V36.8 RATE OTOMATIS sesuai GNSS SYSTEM (seperti modul u-blox M10: makin banyak sistem satelit, makin
-// lambat rate maksimalnya). 2 sistem (GPS + 1 lainnya, QZSS tidak dihitung) = 0,04 s (25 Hz),
-// ALL SYSTEM = 0,06 s (16,7 Hz). Kalau di 0,04 s modul ternyata tidak sanggup (rate terukur < 21,5 Hz
-// selama 6 s saat fix), otomatis turun ke 0,06 s. Pilihan manual di menu dihapus.
+// RATE GPS: dipilih pemilik di menu GNSS > GNSS UPDATE RATE (V36.9.8): 15 HZ = 0,06 s, 25 HZ = 0,04 s.
+// (V36.8 dulu otomatis dari GNSS SYSTEM.) Kalau di 0,04 s modul ternyata tidak sanggup (rate terukur
+// < 21,5 Hz selama 6 s saat fix), otomatis turun ke 0,06 s -- menu menampilkan "AUTO 15".
 static uint16_t gnssMeasAutoV40 = 40;
 static bool gnssRateFellBackV40 = false;
 static inline uint16_t gnssMeasMsV40(){ return gnssMeasAutoV40; }
 static inline bool gnssSlowV40(){ return gnssMeasAutoV40 >= 60; }
 static inline float gnssRateHzV36(){ return 1000.0f / (float)gnssMeasMsV40(); }
 static const char* gnssRateTextV40(){ return gnssSlowV40() ? "0.06 S" : "0.04 S"; }
-static void gnssPickRateV40(){ gnssMeasAutoV40 = (gnssSystemIdxV36 >= 4) ? 60 : 40; gnssRateFellBackV40 = false; }
+// V36.9.8 (perintah pemilik 24 Nov 2026): rate dipilih di menu GNSS UPDATE RATE -- 15 HZ = 0,06 s, 25 HZ = 0,04 s.
+// Dulu (V36.8) otomatis dari GNSS SYSTEM. Turun otomatis ke 0,06 s kalau modul tidak sanggup 25 Hz tetap berlaku.
+static void gnssPickRateV40(){ gnssMeasAutoV40 = gnssUpdateRateIdxV36 ? 40 : 60; gnssRateFellBackV40 = false; }
 
 // V36.2: rate + pesan UBX saja (TANPA CFG-GNSS). Dipakai juga oleh recovery stream --
 // dulu recovery ikut mengirim CFG-GNSS, padahal mengubah konfigurasi konstelasi bisa memicu
@@ -593,7 +597,7 @@ static void configureGnssRateMsgsV36() {
 }
 
 static void configureMg90225HzV30() {
-  gnssPickRateV40();   // V36.8: rate otomatis dari GNSS SYSTEM
+  gnssPickRateV40();   // V36.9.8: rate dari menu GNSS UPDATE RATE (15 / 25 HZ)
   configureGnssRateMsgsV36();
   // Konstelasi dikirim saat boot/deteksi ulang saja, supaya pilihan GNSS SYSTEM user berlaku.
   applyGnssSystemV36();
@@ -9232,19 +9236,20 @@ static bool i2cReadV31(uint8_t a,uint8_t r,uint8_t* b,uint8_t n){Wire.beginTrans
 static uint8_t imuSpiModeV37 = SPI_MODE3;
 #define IMU_SPI_MODE_V36 imuSpiModeV37
 static uint8_t imuDiagIcmV37[2]={0,0}, imuDiagLsmV37[2]={0,0};
+static bool imuSlowV44=false;   // V36.9.8: IMU hanya menjawab di SPI 100 kHz -> semua akses IMU dibuat pelan
 static void icmWriteRegV36(uint8_t reg,uint8_t val){
-  lcdSPI.beginTransaction(SPISettings(1000000,MSBFIRST,IMU_SPI_MODE_V36));
+  lcdSPI.beginTransaction(SPISettings(imuSlowV44?100000:1000000,MSBFIRST,IMU_SPI_MODE_V36));
   digitalWrite(ICM_CS_PIN,LOW);lcdSPI.transfer(reg&0x7F);lcdSPI.transfer(val);digitalWrite(ICM_CS_PIN,HIGH);
   lcdSPI.endTransaction();
 }
 static uint8_t icmReadRegV36(uint8_t reg){
-  lcdSPI.beginTransaction(SPISettings(500000,MSBFIRST,IMU_SPI_MODE_V36));
+  lcdSPI.beginTransaction(SPISettings(imuSlowV44?100000:500000,MSBFIRST,IMU_SPI_MODE_V36));
   digitalWrite(ICM_CS_PIN,LOW);lcdSPI.transfer(reg|0x80);uint8_t v=lcdSPI.transfer(0x00);digitalWrite(ICM_CS_PIN,HIGH);
   lcdSPI.endTransaction();
   return v;
 }
 static bool icmReadBurstV36(uint8_t reg,uint8_t* buf,uint8_t n){
-  lcdSPI.beginTransaction(SPISettings(4000000,MSBFIRST,IMU_SPI_MODE_V36));
+  lcdSPI.beginTransaction(SPISettings(imuSlowV44?400000:4000000,MSBFIRST,IMU_SPI_MODE_V36));
   digitalWrite(ICM_CS_PIN,LOW);lcdSPI.transfer(reg|0x80);for(uint8_t i=0;i<n;i++)buf[i]=lcdSPI.transfer(0x00);digitalWrite(ICM_CS_PIN,HIGH);
   lcdSPI.endTransaction();
   return true;
@@ -9273,7 +9278,8 @@ static bool initImuV31(){
   {
     static const uint8_t modes[2]={SPI_MODE3,SPI_MODE0};
     bool hit=false;
-    for(uint8_t m=0;m<2&&!hit;m++){
+    for(uint8_t k=0;k<4&&!hit;k++){
+      const uint8_t m=k&1;imuSlowV44=k>=2;   // V36.9.8: 500 kHz dulu, lalu 100 kHz
       imuSpiModeV37=modes[m];
       // 13 Nov 2026: baca 3x -- byte pertama setelah ganti mode SPI kadang salah (bus dipakai LCD)
       uint8_t wl=0;
@@ -9281,9 +9287,10 @@ static bool initImuV31(){
         who=icmReadRegV36(0x75);wl=icmReadRegV36(0x0F);
         hit=icmWhoOk(who)||lsmWhoOk(wl);delayMicroseconds(200);
       }
-      imuDiagIcmV37[m]=who;imuDiagLsmV37[m]=wl;
+      if(k<2){imuDiagIcmV37[m]=who;imuDiagLsmV37[m]=wl;}
     }
-    if(!hit)imuSpiModeV37=SPI_MODE3;
+    if(!hit){imuSpiModeV37=SPI_MODE3;imuSlowV44=false;}
+    else if(imuSlowV44)Serial.println("IMU: hanya menjawab di SPI 100 kHz (jalur lemah) -> akses IMU dibuat pelan");
   }
   if(icmWhoOk(who)){
     imuWhoV31=who;imuTypeV36=IMU_TYPE_ICM42688_V36;
@@ -9348,6 +9355,86 @@ static bool initImuV31(){
     }
   }
   imuTypeV36=IMU_TYPE_NONE_V36;imuConnectedV31=false;return false;
+}
+// ======================= V36.9.8 DIAGNOSA IMU (SENSOR INFO, tekan START saat NOT FOUND) =======================
+// Sama dengan sketch RS16_TES_IMU, tapi langsung di alat: hasil & kesimpulan tampil di layar.
+// A. jalur CS (pull-up R16) & MISO saat bus diam, B. WHO_AM_I di 4 mode SPI x 3 kecepatan,
+// C. I2C lewat kaki SCK/MOSI (saat CS HIGH chip juga menjawab I2C) -> chip hidup tapi SPI gagal = solderan CS/SDO.
+struct ImuDiagV44{bool done,csLow;uint8_t idle;uint8_t w75[4][3],w0F[4][3];uint8_t i2cAddr,i2cWho;uint8_t foundMode;uint32_t foundHz;uint8_t foundWho;};
+static ImuDiagV44 imuDiagV44;
+static const uint32_t IMU_DIAG_HZ_V44[3]={100000,500000,1000000};
+static uint8_t imuDiagReadV44(uint8_t reg,uint32_t hz,uint8_t mode){
+  lcdSPI.beginTransaction(SPISettings(hz,MSBFIRST,mode));digitalWrite(ICM_CS_PIN,LOW);delayMicroseconds(2);
+  lcdSPI.transfer(reg|0x80);const uint8_t v=lcdSPI.transfer(0x00);digitalWrite(ICM_CS_PIN,HIGH);lcdSPI.endTransaction();delayMicroseconds(50);return v;
+}
+static bool imuDiagIsIcmV44(uint8_t w){return w==0x47||w==0xDB||w==0x42;}
+static bool imuDiagIsLsmV44(uint8_t w){return w==0x69||w==0x6A||w==0x6B||w==0x6C||w==0x70||w==0x71;}
+static void runImuDiagV44(){
+  ImuDiagV44& d=imuDiagV44;memset(&d,0,sizeof(d));d.foundMode=0xFF;
+  digitalWrite(ICM_CS_PIN,HIGH);digitalWrite(TFT_CS,HIGH);digitalWrite(FLASH_CS_PIN,HIGH);digitalWrite(RS16_SD_CS_PIN,HIGH);
+  // A. CS IMU: lepas sebentar, pull-down internal (~45k) lawan pull-up PCB 10k -> normal terbaca HIGH
+  pinMode(ICM_CS_PIN,INPUT_PULLDOWN);delay(3);d.csLow=digitalRead(ICM_CS_PIN)==LOW;pinMode(ICM_CS_PIN,OUTPUT);digitalWrite(ICM_CS_PIN,HIGH);
+  // MISO saat tidak ada chip dipilih: normal 0xFF (pull-up), 0x00 = jalur tertahan LOW
+  lcdSPI.beginTransaction(SPISettings(400000,MSBFIRST,SPI_MODE0));for(uint8_t i=0;i<12;i++)lcdSPI.transfer(0xFF);d.idle=lcdSPI.transfer(0xFF);lcdSPI.endTransaction();
+  // B. SPI
+  static const uint8_t modes[4]={SPI_MODE0,SPI_MODE1,SPI_MODE2,SPI_MODE3};
+  for(uint8_t m=0;m<4;m++)for(uint8_t h=0;h<3;h++){
+    imuDiagReadV44(0x75,IMU_DIAG_HZ_V44[h],modes[m]);
+    d.w75[m][h]=imuDiagReadV44(0x75,IMU_DIAG_HZ_V44[h],modes[m]);d.w0F[m][h]=imuDiagReadV44(0x0F,IMU_DIAG_HZ_V44[h],modes[m]);
+    if(d.foundMode==0xFF&&(imuDiagIsIcmV44(d.w75[m][h])||imuDiagIsLsmV44(d.w0F[m][h]))){d.foundMode=m;d.foundHz=IMU_DIAG_HZ_V44[h];d.foundWho=imuDiagIsIcmV44(d.w75[m][h])?d.w75[m][h]:d.w0F[m][h];}
+  }
+  // C. I2C lewat kaki SCK (SCL) / MOSI (SDA). Bus SPI dilepas sebentar lalu dipasang lagi.
+  lcdSPI.end();
+  Wire1.begin(TFT_MOSI,TFT_SCLK,20000);
+  static const uint8_t addrs[4]={0x68,0x69,0x6A,0x6B};
+  for(uint8_t i=0;i<4&&!d.i2cAddr;i++){
+    uint8_t w=0;
+    Wire1.beginTransmission(addrs[i]);Wire1.write(0x0F);
+    if(Wire1.endTransmission(false)==0&&Wire1.requestFrom((int)addrs[i],1)==1){w=Wire1.read();if(imuDiagIsLsmV44(w)){d.i2cAddr=addrs[i];d.i2cWho=w;break;}}
+    Wire1.beginTransmission(addrs[i]);Wire1.write(0x75);
+    if(Wire1.endTransmission(false)==0&&Wire1.requestFrom((int)addrs[i],1)==1){w=Wire1.read();if(imuDiagIsIcmV44(w)){d.i2cAddr=addrs[i];d.i2cWho=w;}}
+  }
+  Wire1.end();
+  lcdSPI.begin(TFT_SCLK,TFT_MISO,TFT_MOSI,TFT_CS);
+  digitalWrite(ICM_CS_PIN,HIGH);digitalWrite(TFT_CS,HIGH);digitalWrite(FLASH_CS_PIN,HIGH);digitalWrite(RS16_SD_CS_PIN,HIGH);
+  d.done=true;
+  Serial.printf("IMU DIAGNOSA: CS %s  MISO diam 0x%02X  I2C %s 0x%02X WHO 0x%02X\n",d.csLow?"LOW!":"OK",d.idle,d.i2cAddr?"menjawab di":"tidak menjawab",d.i2cAddr,d.i2cWho);
+  for(uint8_t m=0;m<4;m++)Serial.printf("  MODE%u  100k %02X/%02X  500k %02X/%02X  1M %02X/%02X   (reg 0F / 75)\n",m,d.w0F[m][0],d.w75[m][0],d.w0F[m][1],d.w75[m][1],d.w0F[m][2],d.w75[m][2]);
+}
+static void imuDiagConclusionV44(const char** a,const char** b,uint16_t* c){
+  const ImuDiagV44& d=imuDiagV44;bool allFF=true,all00=true;
+  for(uint8_t m=0;m<4;m++)for(uint8_t h=0;h<3;h++){if(d.w0F[m][h]!=0xFF||d.w75[m][h]!=0xFF)allFF=false;if(d.w0F[m][h]||d.w75[m][h])all00=false;}
+  *c=C_V31_RED;
+  if(d.foundMode!=0xFF){*a="IMU MENJAWAB DI SPI";*b="DETEKSI ULANG OTOMATIS";*c=C_V31_GREEN;}
+  else if(d.i2cAddr){*a="CHIP HIDUP (I2C) TAPI SPI GAGAL";*b="CEK SOLDER KAKI 12 CS & 1 SDO";}
+  else if(d.idle==0x00){*a="MISO TERTAHAN LOW";*b="CEK KORSLETING MISO / KARTU SD";}
+  else if(d.csLow){*a="JALUR CS IMU LOW";*b="CEK R16 / KORSLETING GPIO5";}
+  else if(allFF){*a="CHIP TIDAK MENJAWAB SAMA SEKALI";*b="CEK 3V3, SOLDER, ARAH KAKI 1";}
+  else if(all00){*a="SEMUA 00: MISO TERTAHAN SAAT BACA";*b="CEK KAKI 1 (SDO) CHIP U8";}
+  else{*a="CHIP MENJAWAB ANGKA LAIN";*b="FOTO LAYAR INI & KIRIM";*c=0xFE60;}
+}
+static void drawImuDiagV44(){
+  const ImuDiagV44& d=imuDiagV44;
+  if(!d.done){
+    drawTextCenteredV31(160,92,"IMU TIDAK TERDETEKSI",C_V31_RED,2);
+    drawTextCenteredV31(160,132,"TEKAN START = DIAGNOSA",C_V31_WHITE,2);
+    drawTextCenteredV31(160,170,"CEK JALUR, SPI 4 MODE, I2C",C_V31_GRAY,1);
+    char w[40];snprintf(w,sizeof(w),"BOOT WHO 0F: %02X/%02X  75: %02X/%02X",imuDiagLsmV37[0],imuDiagLsmV37[1],imuDiagIcmV37[0],imuDiagIcmV37[1]);
+    drawTextCenteredV31(160,200,w,C_V31_GRAY,1);
+    return;
+  }
+  char r[48];
+  snprintf(r,sizeof(r),"CS %s   MISO DIAM %02X",d.csLow?"LOW!":"OK",d.idle);drawTextV31(18,68,r,(d.csLow||d.idle==0)?C_V31_RED:C_V31_WHITE,1);
+  drawTextV31(18,88,"SPI  0F/75   100K    500K    1M",C_V31_GRAY,1);
+  for(uint8_t m=0;m<4;m++){
+    snprintf(r,sizeof(r),"MODE%u      %02X/%02X  %02X/%02X  %02X/%02X",m,d.w0F[m][0],d.w75[m][0],d.w0F[m][1],d.w75[m][1],d.w0F[m][2],d.w75[m][2]);
+    drawTextV31(18,106+m*16,r,C_V31_WHITE,1);
+  }
+  if(d.i2cAddr)snprintf(r,sizeof(r),"I2C 0X%02X WHO 0X%02X",d.i2cAddr,d.i2cWho);else snprintf(r,sizeof(r),"I2C TIDAK MENJAWAB");
+  drawTextV31(18,172,r,d.i2cAddr?C_V31_GREEN:C_V31_WHITE,1);
+  const char *a,*b;uint16_t c;imuDiagConclusionV44(&a,&b,&c);
+  drawTextCenteredV31(160,192,a,c,1);drawTextCenteredV31(160,207,b,c,1);
+  drawTextCenteredV31(160,226,"START = ULANG   RIGHT/LEFT = KELUAR",C_V31_GRAY,1);
 }
 static void saveImuOffsetsV31(){prefsV31.putFloat("oax",imuOffAxV31);prefsV31.putFloat("oay",imuOffAyV31);prefsV31.putFloat("oaz",imuOffAzV31);prefsV31.putFloat("ogx",imuOffGxV31);prefsV31.putFloat("ogy",imuOffGyV31);prefsV31.putFloat("ogz",imuOffGzV31);}
 static void startImuCalV31(uint8_t mode){imuCalModeV31=mode;imuCalActiveV31=true;imuCalCountV31=0;calAxV31=calAyV31=calAzV31=calGxV31=calGyV31=calGzV31=0;screenDirtyV31=true;}
@@ -10207,8 +10294,8 @@ static uint32_t otaLastActivityMsV36=0;
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9.7"
-#define RS16_FW_VERSION_NUM "36.9.7"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.8"
+#define RS16_FW_VERSION_NUM "36.9.8"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9.6: aplikasi "RS16 Race Speed" 1.2.0 (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xEC,0xBD,0xDB,0x72,0x1B,0x49,0xB6,0x28,0xF6,0xAE,0xAF,0xC8,0x46,0xCF,0x0C,0x80,0x11,0x00,0x56,0x15,0x2E,0x04,
@@ -12723,7 +12810,8 @@ static void drawGpsSatelliteV31(){
 static void drawGnssMenuV36(){
   char st[16],rt[12];
   snprintf(st,sizeof(st),"%s",gpsReadyLatchedV35?"":(gpsFixTypeV30>=2?"2D FIX":"SEARCH"));   // V36.6 tanpa "3D FIX"
-  snprintf(rt,sizeof(rt),"%s",gnssRateTextV40());
+  if(gnssRateFellBackV40)snprintf(rt,sizeof(rt),"AUTO 15");   // pilih 25 Hz tapi modul tidak sanggup -> turun ke 15 Hz
+  else snprintf(rt,sizeof(rt),"%s",gnssSlowV40()?"15 HZ":"25 HZ");
   const char* lab[]={"GNSS STATUS","GNSS COLD START","GNSS SYSTEM","GNSS UPDATE RATE"};
   const char* val[]={st,"","",rt};
   drawListV36(lab,val,4,gnssMenuSelection,-1,nullptr);
@@ -12732,8 +12820,8 @@ static void drawGnssSystemV36(){
   drawListV36(GNSS_SYSTEM_NAME_V36,nullptr,5,gnssOptionSelection,(int8_t)gnssSystemIdxV36,"RIGHT = TERAPKAN   LEFT = BATAL");
 }
 static void drawGnssRateV36(){
-  const char* o[2]={"0.06 S","0.04 S"};
-  const char* t[2]={"16.7 HZ","25 HZ"};
+  const char* o[2]={"15 HZ","25 HZ"};
+  const char* t[2]={"0.06 S","0.04 S"};
   drawListV36(o,t,2,gnssOptionSelection,(int8_t)gnssUpdateRateIdxV36,"RIGHT = TERAPKAN   LEFT = BATAL");
 }
 static void drawGnssColdStartV36(){
@@ -13581,7 +13669,7 @@ static void drawGmeterV31(){
   else drawTextCenteredV31(160,226,"RIGHT = RESET MAX",C_V31_DARK,1);
 }
 static void drawImuCalRunningV31(){drawBaseV31("IMU CALIBRATION",imuConnectedV31?"SAMPLING":"NO IMU");uint16_t rawPct=(uint16_t)(imuCalCountV31/4);uint8_t pct=(uint8_t)((rawPct>100)?100:rawPct);char p[16];snprintf(p,sizeof(p),"%u%%",pct);drawTextCenteredV31(160,89,"KEEP VEHICLE STILL",C_V31_WHITE,2);drawPanelV31(42,130,236,20);fillRect(45,133,(int)(230*pct/100),14,C_V31_BLUE);drawTextCenteredV31(160,169,p,C_V31_WHITE,2);drawTextCenteredV31(160,202,imuCalActiveV31?"REAL SENSOR SAMPLING":"CALIBRATION COMPLETE",imuCalActiveV31?C_V31_GRAY:C_V31_GREEN,1);}
-static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
+static void drawImuInfoV31(){drawBaseV31("SENSOR INFO",imuConnectedV31?"IMU OK":"NOT FOUND");if(!imuConnectedV31){drawImuDiagV44();return;}char row[40];float vals[]={imuAxV31,imuAyV31,imuAzV31,imuGxV31,imuGyV31,imuGzV31};const char* lab[]={"ACC X","ACC Y","ACC Z","GYRO X","GYRO Y","GYRO Z"};for(uint8_t i=0;i<6;i++){snprintf(row,sizeof(row),i<3?"%+.4f G":"%+.3f D/S",vals[i]);drawTextV31(32,76+i*25,lab[i],C_V31_GRAY,1);drawTextRightV31(288,76+i*25,row,C_V31_WHITE,1);}char who[30];snprintf(who,sizeof(who),"%s  WHO 0X%02X",imuChipNameV36(),imuWhoV31);drawTextV31(32,224,who,C_V31_BLUE,1);}
 
 static void drawApplicationMenuV31(){char w[8];boolTextV31(wifiUserEnabledV31,w,sizeof(w));const char* lab[]={"WI-FI","PHONE LINK","FIRMWARE UPDATE","CONNECTION INFO"};const char* val[]={w,"APLIKASI DI HP","UPLOAD .BIN DARI HP","IP / STATUS"};drawMenuRowsV31("APPLICATION",lab,val,4,applicationSelection);}
 static void drawWifiV31(){drawBaseV31("WI-FI",wifiUserEnabledV31?"ON":"OFF");if(wifiUserEnabledV31){drawTextCenteredV31(160,81,"RS16_0016",C_V31_WHITE,2);drawTextCenteredV31(160,111,"IP 192.168.4.1",C_V31_BLUE,1);char c[24];snprintf(c,sizeof(c),"CLIENT %u",WiFi.softAPgetStationNum());drawTextCenteredV31(160,139,c,C_V31_TEXT,1);drawTextCenteredV31(160,169,"PASSWORD RS160016",C_V31_GRAY,1);}else{drawTextCenteredV31(160,102,"WI-FI OFF",C_V31_GRAY,2);drawTextCenteredV31(160,139,"WI-FI AVAILABLE",C_V31_BLUE,1);}drawTextCenteredV31(160,220,"DISPLAY STATUS",C_V31_GRAY,1);}
@@ -13645,7 +13733,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.7");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.8");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
@@ -13919,7 +14007,7 @@ static void handleButtonsV31(){
       if(gnssMenuSelection==0){uiTestScreen=UI_GPS_SATELLITE;gpsSatelliteLastUiV35=0;gpsSatelliteLastSeqV35=0;}
       else if(gnssMenuSelection==1){uiTestScreen=UI_GNSS_COLDSTART;gnssColdStartMsV36=0;}
       else if(gnssMenuSelection==2){uiTestScreen=UI_GNSS_SYSTEM;gnssOptionSelection=gnssSystemIdxV36;}
-      else{return;}   // V36.8: UPDATE RATE otomatis mengikuti GNSS SYSTEM (hanya info)
+      else{uiTestScreen=UI_GNSS_RATE;gnssOptionSelection=gnssUpdateRateIdxV36;}   // V36.9.8: pilih 15 / 25 HZ
       screenDirtyV31=true;
     }
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}
@@ -13934,7 +14022,7 @@ static void handleButtonsV31(){
   }
   if(uiTestScreen==UI_GNSS_RATE){
     if((up|down)&BUTTON_EVENT_SHORT){gnssOptionSelection=gnssOptionSelection?0:1;screenDirtyV31=true;}
-    if(ok&BUTTON_EVENT_SHORT){gnssUpdateRateIdxV36=gnssOptionSelection;applyGnssUpdateRateV36();saveSettingsV31();uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
+    if(ok&BUTTON_EVENT_SHORT){gnssUpdateRateIdxV36=gnssOptionSelection;gnssPickRateV40();applyGnssUpdateRateV36();saveSettingsV31();uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
     if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_GNSS_MENU;screenDirtyV31=true;}
     return;
   }
@@ -14223,7 +14311,7 @@ if(uiTestScreen==UI_ACCEL_CAL_MENU){
     return;
   }
   if(uiTestScreen==UI_ACCEL_CAL_RUNNING){if(back&BUTTON_EVENT_SHORT&&!imuCalActiveV31){uiTestScreen=UI_ACCEL_CAL_MENU;drawSelectedImuCalMenuV31();}return;}
-  if(uiTestScreen==UI_ACCEL_SENSOR_INFO){if((ok|back)&BUTTON_EVENT_SHORT){uiTestScreen=UI_ACCEL_MENU;drawSelectedAccelerationMenuV31();}return;}
+  if(uiTestScreen==UI_ACCEL_SENSOR_INFO){if((start&BUTTON_EVENT_SHORT)&&!imuConnectedV31&&!activeMeasurementV31()){runImuDiagV44();initImuV31();screenDirtyV31=true;}if((ok|back)&BUTTON_EVENT_SHORT){uiTestScreen=UI_ACCEL_MENU;drawSelectedAccelerationMenuV31();}return;}
   if(uiTestScreen==UI_APPLICATION_MENU){if(up&BUTTON_EVENT_SHORT)applicationSelection=applicationSelection?applicationSelection-1:3;if(down&BUTTON_EVENT_SHORT)applicationSelection=(applicationSelection+1)%4;if((up|down)&BUTTON_EVENT_SHORT)screenDirtyV31=true;if(ok&BUTTON_EVENT_SHORT){if(applicationSelection==0){if(wifiUserEnabledV31)stopWifiV31();else startWifiV31();screenDirtyV31=true;}else if(applicationSelection==1){if(!wifiUserEnabledV31)startWifiV31();uiTestScreen=UI_APPLICATION_PHONE_LINK;screenDirtyV31=true;}else if(applicationSelection==2){if(!wifiUserEnabledV31)startWifiV31();uiTestScreen=UI_APPLICATION_FW_UPDATE;screenDirtyV31=true;}else{uiTestScreen=UI_APPLICATION_CONNECTION_INFO;screenDirtyV31=true;}}if(back&BUTTON_EVENT_SHORT){if(!otaInProgressV31){uiTestScreen=UI_MAIN_MENU;drawSelectedMenu(selectedMenu);}}return;}
   if(uiTestScreen==UI_APPLICATION_WIFI){if(ok&BUTTON_EVENT_SHORT){if(wifiUserEnabledV31)stopWifiV31();else startWifiV31();screenDirtyV31=true;}if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}
   if(uiTestScreen==UI_APPLICATION_PHONE_LINK||uiTestScreen==UI_APPLICATION_CONNECTION_INFO){if(back&BUTTON_EVENT_SHORT){uiTestScreen=UI_APPLICATION_MENU;screenDirtyV31=true;}return;}

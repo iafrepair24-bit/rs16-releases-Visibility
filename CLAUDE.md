@@ -23,7 +23,11 @@ Yang dikunci (nama fungsi/konstanta, ditandai `[DIKUNCI]` di kode):
 - Target: `dragFinishDistanceV31()` (1/4 mile 402,336 m, 1/8 mile 201,168 m), `dragTargetsV31()`, `dragFinishSpeedV31()`.
 - Run baru dari layar FINISH: logika gerak 2 sampel + putar ulang sampel diam di `serviceDragFinishFreezeV36()`.
 - Circuit: perhitungan lap di `serviceCircuitV31()` (interpolasi lintasan garis, lap minimal 10 s, lap 1 dari lintasan pertama).
-- Rate GPS: `configureGnssRateMsgsV36()` + `gnssPickRateV40()` (0,04 s / 0,06 s mengikuti GNSS SYSTEM, turun otomatis).
+- Rate GPS: `configureGnssRateMsgsV36()` + `gnssPickRateV40()` (0,04 s / 0,06 s, turun otomatis ke 0,06 s kalau modul tidak sanggup).
+  Perubahan resmi 24 Nov 2026 (perintah pemilik "berikan pilihan 15hz 0,06 dan 25hz 0,04", V36.9.8): rate dipilih di menu
+  GNSS UPDATE RATE, isi `gnssPickRateV40()` yang sekarang menjadi acuan:
+  `static void gnssPickRateV40(){ gnssMeasAutoV40 = gnssUpdateRateIdxV36 ? 40 : 60; gnssRateFellBackV40 = false; }`
+  (fungsi terkunci lain tetap harus identik dengan f10f59a).
 
 Riwayat pengecualian:
 - 24 Nov 2026 — mode cari satelit 1 Hz (`serviceGpsSearchModeV40()`) sempat diizinkan, lalu DICABUT pemilik di hari yang sama
