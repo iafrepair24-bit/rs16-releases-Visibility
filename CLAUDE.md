@@ -25,10 +25,11 @@ Yang dikunci (nama fungsi/konstanta, ditandai `[DIKUNCI]` di kode):
 - Circuit: perhitungan lap di `serviceCircuitV31()` (interpolasi lintasan garis, lap minimal 10 s, lap 1 dari lintasan pertama).
 - Rate GPS: `configureGnssRateMsgsV36()` + `gnssPickRateV40()` (0,04 s / 0,06 s mengikuti GNSS SYSTEM, turun otomatis).
 
-Pengecualian yang SUDAH diizinkan pemilik:
-- 24 Nov 2026 — mode cari satelit (`serviceGpsSearchModeV40()`): selama GPS belum fix 3D dan tidak ada run,
-  rate modul 1 Hz; begitu fix 3D langsung kembali ke rate normal lewat `gnssPickRateV40()` +
-  `configureGnssRateMsgsV36()` (isi kedua fungsi itu tetap tidak diubah). Run selalu diukur di rate normal.
+Riwayat pengecualian:
+- 24 Nov 2026 — mode cari satelit 1 Hz (`serviceGpsSearchModeV40()`) sempat diizinkan, lalu DICABUT pemilik di hari yang sama
+  ("kembalikan mode pencarian GPS satelit ke versi 36.8"). Sejak V36.9.7 pencarian satelit = V36.8 acuan: tidak ada mode 1 Hz
+  dan tidak ada kirim-balik data satelit (MGA-DBD, commit 91b725a). Fungsi GPS/GNSS harus sama dengan f10f59a,
+  kecuali penyadap `gpsUbxTapV40()` di `parseUbxByteV30()` (hanya mengirim baris "RS,..." ke aplikasi, V36.9).
 
 Kalau ada perubahan lain yang terpaksa menyentuh fungsi di atas, BERHENTI dan tanya pemilik dulu.
 Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan commit `f10f59a`
@@ -40,7 +41,7 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
 - Jangan ubah logo dan bitmap menu utama.
 - Hardware: PCB V2 100x55 (ESP32-WROOM-32). IMU U8 = LSM6 (footprint ICM-42688 LGA-14, pin kompatibel).
 - IC flash W25Q128 (U7, CS GPIO25) KHUSUS untuk riwayat balap (perintah pemilik 24 Nov 2026): /h DRAG, /c CIRCUIT,
-  littlefs di `RS16_V36_9/src/rlfs`. Flash internal (LittleFS) hanya data bantu GPS + cadangan kalau U7 tidak terbaca.
+  littlefs di `RS16_V36_9/src/rlfs`. Flash internal (LittleFS) hanya cadangan kalau U7 tidak terbaca.
 - Build: board ESP32 Dev Module, Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA)".
 - Aplikasi Android pemilik: "RS16 Race Speed" (proyek APK terpisah, id.rs16.racespeed). Protokol ke alat:
   WebSocket ws://192.168.4.1:81 (alat kirim `HELLO,RS16,<versi>` lalu `RS,iTOW,lat,lon,kmh,hdg,sat,gLat,gLong` per sampel),

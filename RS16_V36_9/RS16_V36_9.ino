@@ -1,4 +1,6 @@
 /*
+  RS16 V36.9.7 (24 Nov 2026): pencarian satelit GPS dikembalikan ke V36.8 asli (perintah pemilik): mode cari 1 Hz
+    dan kirim-balik data satelit tersimpan (MGA-DBD) dihapus. Modul GPS selalu di rate normal 0,04 s / 0,06 s.
   RS16 V36.9.6 (24 Nov 2026): cocok dengan aplikasi "RS16 Race Speed" 1.2.0 -- tombol "Ambil semua data dari alat":
     /api/files, /api/file (log microSD), /api/runs (riwayat DRAG & CIRCUIT dari IC flash). Aplikasi 1.2.0 ikut
     tertanam di alat (http://192.168.4.1). API lama /api/history/* (aplikasi 1.1.3) dihapus.
@@ -160,7 +162,7 @@ enum DragModeId : uint8_t;    // V36.6: prototype otomatis enterDragSetupV38() (
 #define RS16_SD_CS_PIN 26
 #define RS16_SD_ENABLED 1
 #include <SD.h>
-#include <LittleFS.h>   // flash internal: data bantu GPS (+ riwayat kalau IC flash U7 tidak terbaca)
+#include <LittleFS.h>   // flash internal: cadangan riwayat kalau IC flash U7 tidak terbaca
 #include <FSImpl.h>
 #include "src/rlfs/rlfs.h"   // V36.9.5 littlefs untuk IC flash W25Q128 (U7) = riwayat balap
 
@@ -433,7 +435,6 @@ static void setGpsPort115200V32() {
 static void configureMg90225HzV30();   // V36.2: forward decl eksplisit (dulu bergantung prototype otomatis IDE)
 
 static void gpsConfigureFoundV40();
-static bool gpsDbdRestorePendV40=false; static uint32_t gpsDbdRestoreAtV40=0;   // V36.8
 static int8_t gpsScanIdxV40=-1;   // V36.8 pencarian GPS latar belakang (-1 = tidak aktif)
 static bool detectAndConfigureGpsV32() {
   gpsScanIdxV40=-1;
@@ -492,7 +493,6 @@ static void gpsConfigureFoundV40() {
   while (gpsSerial.available() > 0) gpsSerial.read();
   configureMg90225HzV30();
   gpsLastAutoDetectMillisV32 = millis();
-  gpsDbdRestorePendV40 = true; gpsDbdRestoreAtV40 = millis() + 400UL;   // V36.8: kirim data satelit tersimpan
 }
 
 // V36.8 PENCARIAN GPS DI LATAR BELAKANG. Dulu semua baud (x2 posisi pin) dicoba saat boot sambil logo
@@ -546,7 +546,6 @@ static void applyGnssSystemV36();          // forward decl -- dipakai di configu
 // ALL SYSTEM = 0,06 s (16,7 Hz). Kalau di 0,04 s modul ternyata tidak sanggup (rate terukur < 21,5 Hz
 // selama 6 s saat fix), otomatis turun ke 0,06 s. Pilihan manual di menu dihapus.
 static uint16_t gnssMeasAutoV40 = 40;
-static bool gpsSearchModeV40 = false;   // V36.8 mode cari satelit 1 Hz (lihat serviceGpsSearchModeV40)
 static bool gnssRateFellBackV40 = false;
 static inline uint16_t gnssMeasMsV40(){ return gnssMeasAutoV40; }
 static inline bool gnssSlowV40(){ return gnssMeasAutoV40 >= 60; }
@@ -797,19 +796,6 @@ static bool ubxStoreV30 = true, ubxCkAOkV30 = false;
 
 static void ubxChecksumAddV30(uint8_t b) { ubxCkAV30 += b; ubxCkBV30 += ubxCkAV30; }
 
-// ======================= V36.8 SIMPAN DATA SATELIT (percepat lock GPS) =======================
-// GPS di PCB V2 ikut mati total saat alat mati (tanpa baterai cadangan) -> tiap dinyalakan cold start.
-// Sebelum alat mati (dan tiap 10 menit saat GPS siap) database navigasi GPS (UBX-MGA-DBD: ephemeris,
-// almanak, dll.) diminta dari modul dan disimpan ke flash. Saat dinyalakan lagi, posisi terakhir
-// (UBX-MGA-INI-POS_LLH) + database itu dikirim balik -> modul tidak mulai dari nol.
-// TIDAK menyentuh bagian pengukuran waktu yang dikunci: data hanya "disadap" di parser sebelum diteruskan.
-#define GPS_DBD_BUF_V40 8192
-#define GPS_DBD_MAGIC_V40 0x31424444UL   // "DDB1"
-static uint8_t gpsDbdBufV40[GPS_DBD_BUF_V40];
-static uint16_t gpsDbdLenV40=0,gpsDbdCountV40=0;
-static bool gpsDbdCapturingV40=false,gpsDbdOverflowV40=false;
-static uint32_t gpsDbdStartMsV40=0,gpsDbdLastMsV40=0;
-static int32_t gpsLastLatE7V40=0,gpsLastLonE7V40=0,gpsLastHgtMmV40=0;static bool gpsLastPosOkV40=false;
 // V36.9 antrean baris data untuk aplikasi (diisi di sini, dikirim lewat WebSocket di loop)
 #define WS_Q_N_V41 32
 static char wsQV41[WS_Q_N_V41][100];static uint8_t wsQHeadV41=0,wsQTailV41=0,wsOpenCountV41=0;
@@ -828,20 +814,6 @@ static void gpsUbxTapV40(uint8_t cls,uint8_t id,const uint8_t* p,uint16_t len){
              fx?ubxI4TapV41(p,28)*1e-7:0.0,fx?ubxI4TapV41(p,24)*1e-7:0.0,
              max(0.0f,ubxI4TapV41(p,60)*0.0036f),ubxI4TapV41(p,64)*1e-5f,(unsigned)p[23],wsGLatV41(),wsGLongV41());
     wsQueueV41(l);
-  }
-  if(cls==0x01&&id==0x07&&len>=92){   // NAV-PVT: simpan posisi terakhir yang valid (3D fix)
-    if((p[21]&0x01)&&p[20]>=3){
-      gpsLastLonE7V40=(int32_t)((uint32_t)p[24]|((uint32_t)p[25]<<8)|((uint32_t)p[26]<<16)|((uint32_t)p[27]<<24));
-      gpsLastLatE7V40=(int32_t)((uint32_t)p[28]|((uint32_t)p[29]<<8)|((uint32_t)p[30]<<16)|((uint32_t)p[31]<<24));
-      gpsLastHgtMmV40=(int32_t)((uint32_t)p[32]|((uint32_t)p[33]<<8)|((uint32_t)p[34]<<16)|((uint32_t)p[35]<<24));
-      gpsLastPosOkV40=true;
-    }
-    return;
-  }
-  if(cls==0x13&&id==0x80&&gpsDbdCapturingV40&&len>0){   // UBX-MGA-DBD dari modul
-    if(gpsDbdLenV40+2u+len>GPS_DBD_BUF_V40){gpsDbdOverflowV40=true;return;}
-    gpsDbdBufV40[gpsDbdLenV40++]=(uint8_t)(len&0xFF);gpsDbdBufV40[gpsDbdLenV40++]=(uint8_t)(len>>8);
-    memcpy(&gpsDbdBufV40[gpsDbdLenV40],p,len);gpsDbdLenV40+=len;gpsDbdCountV40++;gpsDbdLastMsV40=millis();
   }
 }
 static void parseUbxByteV30(uint8_t b) {
@@ -9607,8 +9579,8 @@ static void logPathV38(char d,uint32_t ymd,char* out,size_t n){snprintf(out,n,"/
 static void runLogPathV38(uint32_t ymd,char* out,size_t n){logPathV38('h',ymd,out,n);}
 // ======================= V36.9.5 IC FLASH W25Q128 (U7) = KHUSUS RIWAYAT BALAP =======================
 // Riwayat DRAG (/h) dan CIRCUIT (/c) disimpan di IC flash U7 16 MB (bus SPI bersama LCD/IMU/SD, CS GPIO25),
-// memakai littlefs (src/rlfs) supaya tahan mati listrik & aus merata. Flash internal (LittleFS) tinggal
-// untuk data bantu GPS. Kalau U7 tidak terbaca, riwayat otomatis tetap di flash internal seperti dulu.
+// memakai littlefs (src/rlfs) supaya tahan mati listrik & aus merata. Flash internal (LittleFS) hanya
+// cadangan: kalau U7 tidak terbaca, riwayat otomatis tetap di flash internal seperti dulu.
 // Tidak ada yang berubah pada cara kerja / perhitungan mode race: hanya tempat file riwayat disimpan.
 #define XF_SPI_HZ_V43 20000000UL   // perintah baca 0x03 W25Q128 aman sampai 50 MHz
 #define XF_BLOCK_V43 4096UL
@@ -9787,7 +9759,7 @@ static void xfMigrateV43(){
   if(moved)Serial.printf("RIWAYAT: %u file riwayat lama dipindah ke IC flash U7\n",(unsigned)moved);
 }
 static void runLogInitV38(){
-  const bool intOk=LittleFS.begin(true);   // flash internal tetap dipasang (data bantu GPS, riwayat lama)
+  const bool intOk=LittleFS.begin(true);   // flash internal tetap dipasang (cadangan, riwayat lama)
   if(xfMountV43()){histFsV43=&xfFsV43;runFsOkV38=true;}
   else{histFsV43=&LittleFS;runFsOkV38=intOk;}
   if(runFsOkV38&&!HFS.exists("/h"))HFS.mkdir("/h");
@@ -10235,8 +10207,8 @@ static uint32_t otaLastActivityMsV36=0;
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9.6"
-#define RS16_FW_VERSION_NUM "36.9.6"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.7"
+#define RS16_FW_VERSION_NUM "36.9.7"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9.6: aplikasi "RS16 Race Speed" 1.2.0 (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xEC,0xBD,0xDB,0x72,0x1B,0x49,0xB6,0x28,0xF6,0xAE,0xAF,0xC8,0x46,0xCF,0x0C,0x80,0x11,0x00,0x56,0x15,0x2E,0x04,
@@ -12047,7 +12019,6 @@ static void powerOffV36(const char* reason){
   fillScreen(C_V31_BG);
   drawTextCenteredV31(160,100,"POWER OFF",C_V31_WHITE,3);
   drawTextCenteredV31(160,140,reason,C_V31_GRAY,1);
-  gpsDbdSaveNowV40("POWER OFF");   // V36.8: simpan data satelit supaya lock berikutnya cepat
   if(soundFinishV31)buzzerPlayV31(1000,200);
   delay(1200);
   lcdCommand(0x28);
@@ -12752,7 +12723,7 @@ static void drawGpsSatelliteV31(){
 static void drawGnssMenuV36(){
   char st[16],rt[12];
   snprintf(st,sizeof(st),"%s",gpsReadyLatchedV35?"":(gpsFixTypeV30>=2?"2D FIX":"SEARCH"));   // V36.6 tanpa "3D FIX"
-  snprintf(rt,sizeof(rt),"%s",gpsSearchModeV40?"CARI 1 HZ":gnssRateTextV40());
+  snprintf(rt,sizeof(rt),"%s",gnssRateTextV40());
   const char* lab[]={"GNSS STATUS","GNSS COLD START","GNSS SYSTEM","GNSS UPDATE RATE"};
   const char* val[]={st,"","",rt};
   drawListV36(lab,val,4,gnssMenuSelection,-1,nullptr);
@@ -13674,7 +13645,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.6");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.7");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
@@ -14577,102 +14548,6 @@ static void serviceImuRetryV40(){
   Serial.printf("IMU coba ulang %u: %s  (WHO ICM=0x%02X LSM=0x%02X)\n",(unsigned)tries,ok?imuChipNameV36():"TIDAK TERDETEKSI",imuDiagIcmV37[0],imuDiagLsmV37[0]);
   if(ok)screenDirtyV31=true;
 }
-// ---- V36.8 data satelit: tulis / baca file /g/dbd.bin ----
-static uint32_t gpsReadyMsAccV40=0;   // lama GPS siap di sesi ini (ms)
-static void gpsDbdWriteV40(const char* why){
-  gpsDbdCapturingV40=false;
-  if(!runFsOkV38||gpsDbdCountV40<3||!gpsLastPosOkV40){Serial.printf("GPS DATA: tidak disimpan (%s, %u pesan)\n",why,(unsigned)gpsDbdCountV40);return;}
-  if(!LittleFS.exists("/g"))LittleFS.mkdir("/g");
-  File f=LittleFS.open("/g/dbd.tmp","w");if(!f){Serial.println("GPS DATA: gagal buka file");return;}
-  const uint32_t mg=GPS_DBD_MAGIC_V40;f.write((const uint8_t*)&mg,4);
-  f.write((const uint8_t*)&gpsDbdCountV40,2);f.write((const uint8_t*)&gpsDbdLenV40,2);
-  f.write((const uint8_t*)&gpsLastLatE7V40,4);f.write((const uint8_t*)&gpsLastLonE7V40,4);f.write((const uint8_t*)&gpsLastHgtMmV40,4);
-  const size_t w=f.write(gpsDbdBufV40,gpsDbdLenV40);f.close();
-  if(w!=gpsDbdLenV40){LittleFS.remove("/g/dbd.tmp");Serial.println("GPS DATA: gagal tulis");return;}
-  LittleFS.remove("/g/dbd.bin");LittleFS.rename("/g/dbd.tmp","/g/dbd.bin");
-  Serial.printf("GPS DATA DISIMPAN (%s): %u pesan, %u byte%s\n",why,(unsigned)gpsDbdCountV40,(unsigned)gpsDbdLenV40,gpsDbdOverflowV40?" (sebagian, buffer penuh)":"");
-}
-static void gpsDbdPollStartV40(){
-  gpsDbdLenV40=0;gpsDbdCountV40=0;gpsDbdOverflowV40=false;gpsDbdCapturingV40=true;
-  gpsDbdStartMsV40=millis();gpsDbdLastMsV40=0;
-  sendUbxV30(0x13,0x80,nullptr,0);   // poll UBX-MGA-DBD
-}
-// dipakai saat power off: tunggu sampai database selesai dikirim modul (maks 3 s)
-static void gpsDbdSaveNowV40(const char* why){
-  if(gpsReadyMsAccV40<60000UL||gpsLastByteMillisV32==0||millis()-gpsLastByteMillisV32>2000UL)return;   // belum cukup lama lock: data lama tetap dipakai
-  gpsDbdPollStartV40();
-  while(millis()-gpsDbdStartMsV40<3000UL){
-    serviceGps25HzV30();
-    if(gpsDbdCountV40&&millis()-gpsDbdLastMsV40>400UL)break;
-    delay(2);
-  }
-  gpsDbdWriteV40(why);
-}
-static void gpsDbdRestoreV40(){
-  if(!runFsOkV38)return;
-  File f=LittleFS.open("/g/dbd.bin","r");if(!f){Serial.println("GPS DATA: belum ada data tersimpan (cold start)");return;}
-  uint32_t mg=0;uint16_t cnt=0,len=0;int32_t la=0,lo=0,hg=0;
-  bool ok=f.read((uint8_t*)&mg,4)==4&&mg==GPS_DBD_MAGIC_V40&&f.read((uint8_t*)&cnt,2)==2&&f.read((uint8_t*)&len,2)==2&&len<=GPS_DBD_BUF_V40
-          &&f.read((uint8_t*)&la,4)==4&&f.read((uint8_t*)&lo,4)==4&&f.read((uint8_t*)&hg,4)==4&&f.read(gpsDbdBufV40,len)==len;
-  f.close();
-  if(!ok){Serial.println("GPS DATA: file rusak, diabaikan");LittleFS.remove("/g/dbd.bin");return;}
-  // UBX-MGA-INI-POS_LLH: posisi terakhir, akurasi 50 km (aman kalau alat dibawa ke tempat lain)
-  {uint8_t pl[20];memset(pl,0,sizeof(pl));pl[0]=0x01;const int32_t alt=hg/10;const uint32_t acc=5000000UL;
-   memcpy(&pl[4],&la,4);memcpy(&pl[8],&lo,4);memcpy(&pl[12],&alt,4);memcpy(&pl[16],&acc,4);sendUbxV30(0x13,0x40,pl,sizeof(pl));delay(5);}
-  uint16_t pos=0,sent=0;
-  while(pos+2<=len){
-    const uint16_t l=(uint16_t)gpsDbdBufV40[pos]|((uint16_t)gpsDbdBufV40[pos+1]<<8);pos+=2;
-    if(l==0||pos+l>len)break;
-    sendUbxV30(0x13,0x80,&gpsDbdBufV40[pos],l);pos+=l;sent++;
-    delay(4);   // beri waktu modul memproses (tanpa flow control)
-  }
-  Serial.printf("GPS DATA DIKIRIM KE MODUL: posisi terakhir + %u pesan database\n",(unsigned)sent);
-}
-static void serviceGpsDbdV40(){
-  static uint32_t lastMs=0,nextSaveAcc=120000UL;
-  const uint32_t now=millis();
-  if(gpsReadyLatchedV35)gpsReadyMsAccV40+=(lastMs?now-lastMs:0);
-  lastMs=now;
-  if(gpsDbdRestorePendV40&&runFsOkV38&&(int32_t)(now-gpsDbdRestoreAtV40)>=0&&!activeMeasurementV31()){gpsDbdRestorePendV40=false;gpsDbdRestoreV40();}
-  if(gpsDbdCapturingV40){
-    const bool done=(gpsDbdCountV40&&now-gpsDbdLastMsV40>500UL)||now-gpsDbdStartMsV40>5000UL;
-    if(done&&!activeMeasurementV31())gpsDbdWriteV40("BERKALA");   // tulis flash hanya saat tidak sedang run
-    return;
-  }
-  // berkala: pertama setelah GPS siap 2 menit, lalu tiap 10 menit (hanya saat tidak sedang run)
-  if(gpsReadyLatchedV35&&gpsReadyMsAccV40>=nextSaveAcc&&!activeMeasurementV31()){nextSaveAcc=gpsReadyMsAccV40+600000UL;gpsDbdPollStartV40();}
-}
-// ======================= V36.8 MODE CARI SATELIT (izin pemilik 24 Nov 2026) =======================
-// Selama GPS belum fix, modul dijalankan 1 Hz (rate tinggi memperlambat pencarian satelit), lalu
-// langsung kembali ke rate normal (0,04/0,06 s) begitu ada fix 3D -- SEBELUM GPS READY menyala, jadi
-// semua run tetap diukur di rate normal. Fungsi rate yang dikunci tidak diubah, hanya dipanggil.
-// Tidak pernah aktif saat drag/circuit/logger berjalan.
-static void gpsSearchMsgRatesV40(){   // NAV-SAT & NAV-DOP tiap solusi supaya layar satelit tetap hidup di 1 Hz
-  setUbxMessageRateV30(0x01,0x35,1);setUbxMessageRateV30(0x01,0x04,1);
-  const uint8_t pl[]={0x00,0x01,0x00,0x00, 0x16,0x00,0x91,0x20,0x01, 0x39,0x00,0x91,0x20,0x01};
-  sendUbxV30(0x06,0x8A,pl,sizeof(pl));
-}
-static void serviceGpsSearchModeV40(){
-  static uint32_t notFixSince=0,lastMsgFix=0;
-  const uint32_t now=millis();
-  if(!gpsProtocolDetectedV32||gpsScanIdxV40>=0){notFixSince=0;return;}
-  const bool fix3d=gpsFixRawV30&&gpsFixTypeV30>=3&&gpsEffectiveUsedSatV36()>=4&&gpsLastPvtMillisV30&&now-gpsLastPvtMillisV30<2500UL;
-  if(gpsSearchModeV40){
-    if(fix3d||activeMeasurementV31()){
-      gpsSearchModeV40=false;gnssPickRateV40();configureGnssRateMsgsV36();
-      Serial.printf("GNSS: fix 3D -> kembali ke rate normal %s\n",gnssRateTextV40());
-      notFixSince=0;return;
-    }
-    if(now-lastMsgFix>10000UL){lastMsgFix=now;gpsSearchMsgRatesV40();}   // jaga kalau recovery mengirim ulang setelan
-    return;
-  }
-  if(fix3d||gpsReadyLatchedV35||activeMeasurementV31()){notFixSince=0;return;}
-  if(!notFixSince){notFixSince=now;return;}
-  if(now-notFixSince<3000UL)return;
-  gpsSearchModeV40=true;lastMsgFix=now;
-  gnssMeasAutoV40=1000;configureGnssRateMsgsV36();gpsSearchMsgRatesV40();
-  Serial.println("GNSS: belum fix -> mode cari satelit 1 Hz");
-}
 static void serviceGpsLedV40(){
   static int8_t last=-1;
   const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
@@ -14690,5 +14565,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGpsScanV40();serviceGps25HzV30();serviceGpsSearchModeV40();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsDbdV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }
