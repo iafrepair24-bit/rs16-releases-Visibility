@@ -303,7 +303,7 @@ table.t .r{text-align:right}
 
 <!-- ================= HISTORY ================= -->
 <div class="screen" id="s-history">
-  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Riwayat</div><button class="act" onclick="$('#impFile').click()">IMPORT</button></div>
+  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Riwayat</div><button class="act" id="btnDevImp" onclick="histFromDevice()">ALAT</button><button class="act" onclick="$('#impFile').click()">IMPORT</button></div>
   <div class="subtabs"><button data-h="all" class="on" onclick="histFilter('all')">Semua</button><button data-h="track" onclick="histFilter('track')">Track</button><button data-h="drag" onclick="histFilter('drag')">Speed</button></div>
   <div class="scroll"><div class="list" id="histList"></div></div>
   <input type="file" id="impFile" accept=".csv,.txt,.log,.json" style="display:none" onchange="importFile(this.files[0]);this.value=''">
@@ -617,7 +617,7 @@ if (false) module.exports = { parseLine, Proc, DragRun, Sim, makeDemoTrack, fmtL
 // ================= APP =================
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 // ---------- versi & jembatan APK ----------
-const APP_VER = '1.1.2';               // versi tampilan aplikasi (naikkan setiap update)
+const APP_VER = '1.1.3';               // versi tampilan aplikasi (naikkan setiap update)
 const NATIVE = window.RS16Native || null; // ada kalau dibuka dari APK RS16
 function nat(fn, ...a) { try { return NATIVE && typeof NATIVE[fn] === 'function' ? NATIVE[fn](...a) : undefined; } catch (e) { console.log('native', fn, e); } }
 function verCmp(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b || '0').split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; } return 0; }
@@ -987,6 +987,64 @@ function saveDrag(res) {
   const h = store.get('hist', []); h.unshift({ id, kind: 'drag', date, name: res.label, mode: res.mode, target: res.target, time: res.time, trap: res.trap }); store.set('hist', h);
 }
 
+// ================= RIWAYAT DARI ALAT (1.1.3, butuh firmware RS16 V36.9.4+) =================
+// Alat menyimpan run DRAG/SPEED (titik waktu + grafik speed). Circuit di alat hanya menyimpan waktu lap (tanpa jalur GPS) jadi tidak diambil.
+function devBase() { return onDevicePage() ? '' : 'http://' + devHost(); }
+async function devJson(path, ms = 15000) {
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(devBase() + path, { signal: ac.signal, cache: 'no-store' });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || j == null) { const e = new Error((j && j.error) || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+    return j;
+  } finally { clearTimeout(tm); }
+}
+function devRunKey(x) { return x.d + '_' + x.i + '_' + x.t + '_' + x.time; }
+function devRunToSess(r) {
+  const p = String(r.date || '').match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)/);
+  const date = p ? new Date(+p[1], p[2] - 1, +p[3], +p[4], +p[5], +p[6]).getTime() : Date.now();
+  const tr = (r.trace || []).map(v => [Math.round(+v[0]), +(+v[1]).toFixed(1), +(+v[2]).toFixed(1)]);
+  if (!tr.length) tr.push([0, 0, 0]);
+  const mode = r.kind === 'speed' ? 'speed' : r.kind === 'quarter' ? 'quarter' : 'dist';
+  const label = r.label + (r.ok ? '' : ' (STOP)') + ' · S' + r.sess + ' R' + r.run;
+  const s = { id: uid(), kind: 'drag', date, label, mode, target: r.target, time: r.time, vmax: +r.vmax || Math.max(...tr.map(v => v[1])), ms: (r.ms || []).map(m => Object.assign({}, m)), trace: tr, src: 'alat', rollout: !!r.rollout };
+  if (r.trap != null) s.trap = r.trap;
+  if (mode === 'speed') s.dist = r.dist;
+  return s;
+}
+let devImpBusy = false;
+async function histFromDevice() {
+  if (devImpBusy) return; devImpBusy = true;
+  const btn = $('#btnDevImp'), txt = btn.textContent;
+  try {
+    btn.textContent = '…'; toast('Membaca riwayat di alat…');
+    let list;
+    try { list = await devJson('/api/history/list', 30000); }
+    catch (e) {
+      toast(e.status === 404 ? 'Firmware alat belum mendukung. Update RS16 ke V36.9.4.' : e.status === 409 ? 'Alat sedang mengukur. STOP dulu di alat.' :
+        'Alat tidak terjangkau. Nyalakan WiFi di alat (menu APPLICATION) & sambungkan HP ke WiFi RS16.'); return;
+    }
+    if (!Array.isArray(list)) { toast('Data dari alat tidak dikenal'); return; }
+    const done = new Set(store.get('devImp', []));
+    const todo = list.filter(x => !done.has(devRunKey(x)));
+    if (!todo.length) { toast(list.length ? 'Semua riwayat alat sudah ada di HP' : 'Riwayat di alat masih kosong'); return; }
+    if (!await ask('Ambil ' + todo.length + ' run dari alat RS16?', { yes: 'Ambil' })) return;
+    const h = store.get('hist', []); let n = 0, fail = 0;
+    for (let k = 0; k < todo.length; k++) {
+      const x = todo[k]; btn.textContent = (k + 1) + '/' + todo.length;
+      let r; try { r = await devJson('/api/history/run?d=' + x.d + '&i=' + x.i); } catch (e) { fail++; if (e.status === 409) break; continue; }
+      const s = devRunToSess(r);
+      if (!store.set('h_' + s.id, s)) break;
+      h.push({ id: s.id, kind: 'drag', date: s.date, name: s.label, mode: s.mode, target: s.target, time: s.time, trap: s.trap });
+      done.add(devRunKey(x)); n++;
+    }
+    h.sort((a, b) => (b.date || 0) - (a.date || 0));
+    store.set('hist', h); store.set('devImp', [...done]);
+    renderHistory();
+    toast(n + ' run diambil dari alat' + (fail ? ' · ' + fail + ' gagal (coba lagi)' : ''));
+  } finally { devImpBusy = false; btn.textContent = txt; }
+}
+
 // ================= HISTORY =================
 S.hFilter = 'all';
 function openHistory() { go('s-history'); renderHistory(); }
@@ -996,7 +1054,7 @@ function renderHistory() {
   $('#histList').innerHTML = h.length ? h.map(x => x.kind === 'track' ?
     `<div class="row" onclick="openDetail('${x.id}')"><div class="ic">🏁</div><div class="m"><div class="t">${esc(x.name)}</div><div class="s">${fmtDate(x.date)} · ${x.laps} lap · top ${Math.round(x.vmax || 0)} km/h</div></div><div class="r num" style="color:var(--best)">${x.best ? fmtLap(x.best) : '--'}</div></div>` :
     `<div class="row" onclick="openDetail('${x.id}')"><div class="ic">⚡</div><div class="m"><div class="t">${esc(x.name)}</div><div class="s">${fmtDate(x.date)}${x.trap ? ' · trap ' + x.trap.toFixed(1) + ' km/h' : ''}</div></div><div class="r num">${(x.time / 1000).toFixed(2)} s</div></div>`).join('')
-    : '<div class="empty">Belum ada riwayat.<br>Tekan MULAI BALAPAN untuk mulai.</div>';
+    : '<div class="empty">Belum ada riwayat.<br>Tekan MULAI BALAPAN untuk mulai,<br>atau ALAT untuk mengambil riwayat dari RS16.</div>';
 }
 function bestForTrack(id) { const v = store.get('hist', []).filter(x => x.kind === 'track' && x.trackId === id && x.best).map(x => x.best); return v.length ? Math.min(...v) : null; }
 
