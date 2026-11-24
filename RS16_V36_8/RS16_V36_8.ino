@@ -521,6 +521,7 @@ static void applyGnssSystemV36();          // forward decl -- dipakai di configu
 // ALL SYSTEM = 0,06 s (16,7 Hz). Kalau di 0,04 s modul ternyata tidak sanggup (rate terukur < 21,5 Hz
 // selama 6 s saat fix), otomatis turun ke 0,06 s. Pilihan manual di menu dihapus.
 static uint16_t gnssMeasAutoV40 = 40;
+static bool gpsSearchModeV40 = false;   // V36.8 mode cari satelit 1 Hz (lihat serviceGpsSearchModeV40)
 static bool gnssRateFellBackV40 = false;
 static inline uint16_t gnssMeasMsV40(){ return gnssMeasAutoV40; }
 static inline bool gnssSlowV40(){ return gnssMeasAutoV40 >= 60; }
@@ -12003,7 +12004,7 @@ static void drawGpsSatelliteV31(){
 static void drawGnssMenuV36(){
   char st[16],rt[12];
   snprintf(st,sizeof(st),"%s",gpsReadyLatchedV35?"":(gpsFixTypeV30>=2?"2D FIX":"SEARCH"));   // V36.6 tanpa "3D FIX"
-  snprintf(rt,sizeof(rt),"%s",gnssRateTextV40());
+  snprintf(rt,sizeof(rt),"%s",gpsSearchModeV40?"CARI 1 HZ":gnssRateTextV40());
   const char* lab[]={"GNSS STATUS","GNSS COLD START","GNSS SYSTEM","GNSS UPDATE RATE"};
   const char* val[]={st,"","",rt};
   drawListV36(lab,val,4,gnssMenuSelection,-1,nullptr);
@@ -13810,6 +13811,37 @@ static void serviceGpsDbdV40(){
   // berkala: pertama setelah GPS siap 2 menit, lalu tiap 10 menit (hanya saat tidak sedang run)
   if(gpsReadyLatchedV35&&gpsReadyMsAccV40>=nextSaveAcc&&!activeMeasurementV31()){nextSaveAcc=gpsReadyMsAccV40+600000UL;gpsDbdPollStartV40();}
 }
+// ======================= V36.8 MODE CARI SATELIT (izin pemilik 24 Nov 2026) =======================
+// Selama GPS belum fix, modul dijalankan 1 Hz (rate tinggi memperlambat pencarian satelit), lalu
+// langsung kembali ke rate normal (0,04/0,06 s) begitu ada fix 3D -- SEBELUM GPS READY menyala, jadi
+// semua run tetap diukur di rate normal. Fungsi rate yang dikunci tidak diubah, hanya dipanggil.
+// Tidak pernah aktif saat drag/circuit/logger berjalan.
+static void gpsSearchMsgRatesV40(){   // NAV-SAT & NAV-DOP tiap solusi supaya layar satelit tetap hidup di 1 Hz
+  setUbxMessageRateV30(0x01,0x35,1);setUbxMessageRateV30(0x01,0x04,1);
+  const uint8_t pl[]={0x00,0x01,0x00,0x00, 0x16,0x00,0x91,0x20,0x01, 0x39,0x00,0x91,0x20,0x01};
+  sendUbxV30(0x06,0x8A,pl,sizeof(pl));
+}
+static void serviceGpsSearchModeV40(){
+  static uint32_t notFixSince=0,lastMsgFix=0;
+  const uint32_t now=millis();
+  if(!gpsProtocolDetectedV32||gpsScanIdxV40>=0){notFixSince=0;return;}
+  const bool fix3d=gpsFixRawV30&&gpsFixTypeV30>=3&&gpsEffectiveUsedSatV36()>=4&&gpsLastPvtMillisV30&&now-gpsLastPvtMillisV30<2500UL;
+  if(gpsSearchModeV40){
+    if(fix3d||activeMeasurementV31()){
+      gpsSearchModeV40=false;gnssPickRateV40();configureGnssRateMsgsV36();
+      Serial.printf("GNSS: fix 3D -> kembali ke rate normal %s\n",gnssRateTextV40());
+      notFixSince=0;return;
+    }
+    if(now-lastMsgFix>10000UL){lastMsgFix=now;gpsSearchMsgRatesV40();}   // jaga kalau recovery mengirim ulang setelan
+    return;
+  }
+  if(fix3d||gpsReadyLatchedV35||activeMeasurementV31()){notFixSince=0;return;}
+  if(!notFixSince){notFixSince=now;return;}
+  if(now-notFixSince<3000UL)return;
+  gpsSearchModeV40=true;lastMsgFix=now;
+  gnssMeasAutoV40=1000;configureGnssRateMsgsV36();gpsSearchMsgRatesV40();
+  Serial.println("GNSS: belum fix -> mode cari satelit 1 Hz");
+}
 static void serviceGpsLedV40(){
   static int8_t last=-1;
   const int8_t on=(gpsTimingReadyV31()&&!displaySleepingV31)?1:0;
@@ -13827,5 +13859,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsDbdV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGpsScanV40();serviceGps25HzV30();serviceGpsSearchModeV40();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsDbdV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
 }

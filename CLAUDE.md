@@ -24,6 +24,11 @@ Yang dikunci (nama fungsi/konstanta di `RS16_V36_8.ino`, ditandai `[DIKUNCI]` di
 - Circuit: perhitungan lap di `serviceCircuitV31()` (interpolasi lintasan garis, lap minimal 10 s, lap 1 dari lintasan pertama).
 - Rate GPS: `configureGnssRateMsgsV36()` + `gnssPickRateV40()` (0,04 s / 0,06 s mengikuti GNSS SYSTEM, turun otomatis).
 
+Pengecualian yang SUDAH diizinkan pemilik:
+- 24 Nov 2026 — mode cari satelit (`serviceGpsSearchModeV40()`): selama GPS belum fix 3D dan tidak ada run,
+  rate modul 1 Hz; begitu fix 3D langsung kembali ke rate normal lewat `gnssPickRateV40()` +
+  `configureGnssRateMsgsV36()` (isi kedua fungsi itu tetap tidak diubah). Run selalu diukur di rate normal.
+
 Kalau ada perubahan lain yang terpaksa menyentuh fungsi di atas, BERHENTI dan tanya pemilik dulu.
 Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan commit `f10f59a`
 (misalnya `git diff f10f59a -- RS16_V36_8/RS16_V36_8.ino` lalu cek tidak ada baris di fungsi tersebut yang berubah).
