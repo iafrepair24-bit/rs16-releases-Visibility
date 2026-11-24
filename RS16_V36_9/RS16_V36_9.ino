@@ -1,4 +1,7 @@
 /*
+  RS16 V36.9.1 (24 Nov 2026): HISTORY daftar sesi dibuat 2 baris supaya tulisan tidak dempet.
+*/
+/*
   RS16 V36.9 (24 Nov 2026) -- dari V36.8. Terhubung ke aplikasi Android "RS16 Race Speed":
   - WebSocket ws://192.168.4.1:81 : kirim HELLO,RS16,36.9 lalu setiap sampel GPS "RS,iTOW,lat,lon,kmh,hdg,sat,gLat,gLong".
   - http://192.168.4.1 menyajikan aplikasi RS16 Race Speed (tertanam di firmware, gzip). Halaman update sederhana: /update.html
@@ -11286,8 +11289,8 @@ static bool otaAuthOkV36(){
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9"
-#define RS16_FW_VERSION_NUM "36.9"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.1"
+#define RS16_FW_VERSION_NUM "36.9.1"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9: aplikasi "RS16 Race Speed" (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xD4,0xBD,0xCB,0x72,0x23,0x49,0xB6,0x18,0xB8,0xCF,0xAF,0xF0,0x44,0x55,0x37,0x80,0x4E,0x20,0x88,0x37,0x41,0x30,
@@ -13767,27 +13770,32 @@ static void histSessTextV39(uint32_t ymd,const SessSumV39& p,char* o,size_t n){
   else snprintf(o,n,"SESI %02u",nn);
 }
 static void drawHistSessV39(){
+  // V36.9.1: dua baris per sesi supaya tidak dempet (font Arimo lebih lebar dari font lama):
+  //   atas  : NOMOR SESI (besar) ........................ WAKTU BEST (besar) @Rn
+  //   bawah : mode (biru)   jam  .  jumlah run (abu)
   fillScreen(C_V31_BG);drawTopBarV31();
   const uint32_t ymd=runDatesV38[histDateSelV38];char t[28];fmtDateV38(ymd,t,sizeof(t));
   drawTextV31(14,38,t,C_V31_GRAY,1);
   snprintf(t,sizeof(t),"%u SESI  %u RUN",(unsigned)sessCntV39,(unsigned)histRunCountV38);drawTextRightV31(306,38,t,C_V31_BLUE,1);
-  const uint8_t first=sessSelV39<5?0:sessSelV39-4;
-  for(uint8_t j=0;j<5;j++){
+  const uint8_t ROWS=4;
+  const uint8_t first=sessSelV39<ROWS?0:sessSelV39-(ROWS-1);
+  for(uint8_t j=0;j<ROWS;j++){
     const uint8_t i=first+j;if(i>=sessCntV39)break;
     const SessSumV39& p=sessV39[sessCntV39-1-i];
-    const int16_t y=52+j*34;const bool sel=i==sessSelV39;
-    if(sel)drawRoundSelectV36(8,y,304,30,9);
-    fillRect(12,y+4,4,22,sel?C_V31_BLUE:C_V31_EDGE);
-    char sn[14],md[20],tm[16],rr[20];histSessTextV39(ymd,p,sn,sizeof(sn));histModeNameV39(p.mode,p.fin,md,sizeof(md));
-    drawTextV31(22,y+8,sn,sel?C_V31_WHITE:C_V31_TEXT,2);
-    drawTextV31(132,y+5,md,C_V31_BLUE,1);
-    snprintf(rr,sizeof(rr),"%02u.%02u  %u RUN",p.hh,p.mm,(unsigned)p.runs);drawTextV31(132,y+18,rr,C_V31_GRAY,1);
+    const int16_t y=54+j*41;const bool sel=i==sessSelV39;
+    if(sel)drawRoundSelectV36(8,y,304,37,9);
+    fillRect(12,y+5,4,27,sel?C_V31_BLUE:C_V31_EDGE);
+    char sn[14],md[20],tm[16],rr[24];histSessTextV39(ymd,p,sn,sizeof(sn));histModeNameV39(p.mode,p.fin,md,sizeof(md));
+    drawTextV31(22,y+5,sn,sel?C_V31_WHITE:C_V31_TEXT,2);
     if(p.best){formatMsV31(p.best,tm,sizeof(tm));snprintf(rr,sizeof(rr),"@R%u",(unsigned)p.bestRun);
-      const int16_t rw=textWidthV31(rr,1);drawTextRightV31(302,y+11,rr,C_V31_GREEN,1);drawTextRightV31(302-rw-4,y+8,tm,sel?C_V31_WHITE:C_V31_TEXT,2);}
-    else drawTextRightV31(302,y+11,"STOP",C_V31_RED,1);
+      const int16_t rw=textWidthV31(rr,1);drawTextRightV31(302,y+9,rr,C_V31_GREEN,1);drawTextRightV31(302-rw-5,y+5,tm,sel?C_V31_WHITE:C_V31_TEXT,2);}
+    else drawTextRightV31(302,y+9,"STOP",C_V31_RED,1);
+    drawTextV31(22,y+25,md,C_V31_BLUE,1);
+    snprintf(rr,sizeof(rr),"JAM %02u.%02u   %u RUN",p.hh,p.mm,(unsigned)p.runs);
+    drawTextV31(22+textWidthV31(md,1)+12,y+25,rr,C_V31_GRAY,1);
   }
-  if(first>0)drawTextCenteredV31(160,44,"^",C_V31_GRAY,1);
-  if(first+5<sessCntV39)drawTextCenteredV31(160,222,"v",C_V31_GRAY,1);
+  if(first>0)drawTextCenteredV31(160,46,"^",C_V31_GRAY,1);
+  if(first+ROWS<sessCntV39)drawTextCenteredV31(160,219,"v",C_V31_GRAY,1);
   drawTextCenteredV31(160,231,"RIGHT = TABEL RUN   LEFT = KALENDER",C_V31_GRAY,1);
 }
 // ---- tabel run 1 sesi: RUN | TIME | +/- (selisih terhadap BEST sesi). Baris BEST ditandai hijau ----
@@ -14323,7 +14331,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.1");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
