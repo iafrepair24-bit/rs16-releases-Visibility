@@ -1,0 +1,29 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'id.rs16.racespeed'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "id.rs16.racespeed"
+        minSdk 26
+        targetSdk 34
+        versionCode 4
+        versionName "1.2.0"
+
+        // Alamat server update ada di app/src/main/java/id/rs16/racespeed/Config.java
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

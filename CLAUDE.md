@@ -45,3 +45,5 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
 - Aplikasi Android pemilik: "RS16 Race Speed" (proyek APK terpisah, id.rs16.racespeed). Protokol ke alat:
   WebSocket ws://192.168.4.1:81 (alat kirim `HELLO,RS16,<versi>` lalu `RS,iTOW,lat,lon,kmh,hdg,sat,gLat,gLong` per sampel),
   update firmware POST /update (multipart, Basic auth). Perintah `HZ,..` dari aplikasi sengaja diabaikan (rate dikunci).
+  Ambil data (aplikasi 1.2.0, firmware V36.9.6+): GET /api/files, /api/file?name=/LOG_..CSV (microSD), /api/runs?t=h|c&d=YYYYMMDD
+  (riwayat dari IC flash). Sumber APK ada di `aplikasi_apk/RS16RaceSpeed`; aplikasi yang sama tertanam di firmware (gzip).

@@ -1,0 +1,8 @@
+<resources>
+    <style name="RS16Theme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/rs16_bg</item>
+        <item name="android:statusBarColor">@color/rs16_bg</item>
+        <item name="android:navigationBarColor">@color/rs16_bg</item>
+        <item name="android:colorAccent">#2F7BFF</item>
+    </style>
+</resources>
