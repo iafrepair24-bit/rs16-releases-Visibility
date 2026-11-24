@@ -1,7 +1,8 @@
 RS16 V36.9 -- PETUNJUK PASANG PERTAMA (lewat kabel, cukup sekali)
 ================================================================
 
-1. Ekstrak ZIP ini. Folder harus bernama RS16_V36_9 dan berisi RS16_V36_9.ino.
+1. Ekstrak ZIP ini. Folder harus bernama RS16_V36_9 dan berisi RS16_V36_9.ino
+   beserta folder src (isi: rlfs = penyimpanan riwayat di IC flash W25Q128). Jangan dipisah.
 2. Buka RS16_V36_9.ino di Arduino IDE.
 3. Tools:
      Board            : ESP32 Dev Module
@@ -35,6 +36,8 @@ D. Buka aplikasi RS16 Race Speed -> menu Update -> "Pilih file firmware (.bin) d
 E. Tunggu progres 100%. RS16 restart sendiri (+-30 detik). Jangan matikan alat selama update.
 
 Catatan:
+- Riwayat balap disimpan di IC flash W25Q128 (U7, 16 MB). Riwayat lama dari flash internal
+  dipindah otomatis saat pertama menyala. Cek di SETTINGS -> SYSTEM INFO: "IC FLASH 16MB x% TERPAKAI".
 - Update ditolak kalau alat sedang run (drag/circuit/logger) atau baterai < 15%.
 - Kalau upload gagal/putus, firmware lama tetap jalan; ulangi saja.
 - Partition Scheme di langkah pemasangan pertama menentukan semuanya: kalau nanti mengganti

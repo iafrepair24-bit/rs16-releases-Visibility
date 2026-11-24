@@ -39,6 +39,8 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
 - Bahasa komunikasi dengan pemilik: Indonesia. "Kerjakan" = perintah untuk melaksanakan.
 - Jangan ubah logo dan bitmap menu utama.
 - Hardware: PCB V2 100x55 (ESP32-WROOM-32). IMU U8 = LSM6 (footprint ICM-42688 LGA-14, pin kompatibel).
+- IC flash W25Q128 (U7, CS GPIO25) KHUSUS untuk riwayat balap (perintah pemilik 24 Nov 2026): /h DRAG, /c CIRCUIT,
+  littlefs di `RS16_V36_9/src/rlfs`. Flash internal (LittleFS) hanya data bantu GPS + cadangan kalau U7 tidak terbaca.
 - Build: board ESP32 Dev Module, Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA)".
 - Aplikasi Android pemilik: "RS16 Race Speed" (proyek APK terpisah, id.rs16.racespeed). Protokol ke alat:
   WebSocket ws://192.168.4.1:81 (alat kirim `HELLO,RS16,<versi>` lalu `RS,iTOW,lat,lon,kmh,hdg,sat,gLat,gLong` per sampel),
