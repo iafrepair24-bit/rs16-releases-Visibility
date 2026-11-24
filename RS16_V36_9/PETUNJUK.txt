@@ -1,0 +1,41 @@
+RS16 V36.9 -- PETUNJUK PASANG PERTAMA (lewat kabel, cukup sekali)
+================================================================
+
+1. Ekstrak ZIP ini. Folder harus bernama RS16_V36_9 dan berisi RS16_V36_9.ino.
+2. Buka RS16_V36_9.ino di Arduino IDE.
+3. Tools:
+     Board            : ESP32 Dev Module
+     Partition Scheme : Minimal SPIFFS (1.9MB APP with OTA)   <-- WAJIB, kalau salah update lewat aplikasi tidak bisa
+     Upload Speed     : 115200
+     Port             : COM programmer (mis. COM13)
+4. Klik Upload. Kalau muncul "Invalid head of packet":
+     tahan IO0 ke GND, sentuh EN ke GND sebentar, klik Upload,
+     lepas IO0 setelah muncul "Writing...".
+5. Selesai. Di Serial Monitor (115200) harus muncul baris BOOT> ... dan "RS16 V36 READY".
+
+
+UPDATE BERIKUTNYA (tanpa kabel, lewat aplikasi)
+================================================
+
+A. Buat file .bin di komputer:
+     Arduino IDE -> Sketch -> Export Compiled Binary
+     Ambil file  RS16_V36_9.ino.bin  (BUKAN .bootloader.bin / .partitions.bin / .merged.bin)
+     Kirim file itu ke HP (WhatsApp ke diri sendiri, Google Drive, kabel USB, dll).
+
+B. Di RS16: menu APPLICATION -> FIRMWARE UPDATE (WiFi menyala sendiri).
+
+C. Sambungkan WiFi HP ke  RS16_0016  password  RS160016
+   (kalau HP bilang "tidak ada internet", pilih tetap tersambung; matikan data seluler sementara).
+
+D. Buka aplikasi RS16 Race Speed -> menu Update -> "Pilih file firmware (.bin) dari HP"
+   -> pilih RS16_V36_9.ino.bin -> "Pasang ke alat".
+   Password update: RS160016.
+   (Tanpa APK juga bisa: buka Chrome ke http://192.168.4.1)
+
+E. Tunggu progres 100%. RS16 restart sendiri (+-30 detik). Jangan matikan alat selama update.
+
+Catatan:
+- Update ditolak kalau alat sedang run (drag/circuit/logger) atau baterai < 15%.
+- Kalau upload gagal/putus, firmware lama tetap jalan; ulangi saja.
+- Partition Scheme di langkah pemasangan pertama menentukan semuanya: kalau nanti mengganti
+  Partition Scheme, pemasangan harus lewat kabel lagi.
