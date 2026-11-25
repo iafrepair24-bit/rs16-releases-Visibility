@@ -1,6 +1,7 @@
 /*
   RS16 V36.9.12 (25 Nov 2026): menu terpilih tidak buram lagi: sorot biru di belakang ikon dihapus (ikon biru menyatu),
-    diganti tepi neon 3 px yang tegas + cahaya luar tipis. Isi kartu terpilih gelap netral.
+    diganti tepi neon 3 px yang tegas + cahaya luar tipis. Latar karbon & kartu dibuat +-50% lebih gelap karena di LCD
+    asli warna gelap tampil jauh lebih terang (foto pemilik) -> ikon lebih kontras.
   RS16 V36.9.11 (25 Nov 2026): menu utama premium "Carbon & Chrome" (pilihan pemilik): latar serat karbon, kartu
     bertepi krom + kilau kaca, menu terpilih neon biru bercahaya, bilah keterangan di bawah. Bitmap/ikon/logo tetap.
   RS16 V36.9.10 (25 Nov 2026): menu utama mewah (pilihan pemilik: kartu kaca + sorot biru). Latar gradasi biru,
@@ -5885,7 +5886,7 @@ static int luxRdV47(int16_t x,int16_t y,int16_t x0,int16_t y0,int16_t x1,int16_t
 }
 static uint16_t luxBgV47(int16_t x,int16_t y,uint8_t sel){
   // serat karbon: anyaman 4x4, 3 tingkat warna
-  static const uint16_t CF[3]={RGB_LUX(10,11,14),RGB_LUX(18,19,24),RGB_LUX(26,28,34)};
+  static const uint16_t CF[3]={RGB_LUX(4,4,6),RGB_LUX(9,10,13),RGB_LUX(15,16,20)};   // V36.9.12 lebih gelap: LCD mengangkat warna gelap
   const bool o=((x>>2)+(y>>2))&1; const int sh=o?(x&3):(y&3);
   const uint16_t base=CF[(sh==0||sh==3)?0:(sh==1?1:2)];
   int8_t col=(int8_t)((x-9)/76); if(col<0)col=0; if(col>3)col=3; const uint8_t i=(uint8_t)(col+(y<126?0:4));
@@ -5896,9 +5897,9 @@ static uint16_t luxBgV47(int16_t x,int16_t y,uint8_t sel){
     // supaya ikon (yang juga berwarna biru) tetap kontras dan tajam.
     if(s&&rd>=-2){static const uint16_t NE[3]={RGB_LUX(140,215,255),RGB_LUX(60,165,255),RGB_LUX(24,96,200)};return NE[-rd];}
     if(!s&&rd>=-1)return mixLuxV47(RGB_LUX(170,180,200),RGB_LUX(36,42,54),(uint8_t)(vy>16?16:vy));   // tepi krom 2 px
-    uint16_t f=s?RGB_LUX(20,26,38):RGB_LUX(16,20,28);            // isi kartu, makin gelap ke bawah
+    uint16_t f=s?RGB_LUX(10,14,22):RGB_LUX(7,9,13);              // isi kartu (gelap pekat di LCD), makin gelap ke bawah
     f=mixLuxV47(f,0x0000,(uint8_t)(vy/3));
-    const int sheen=(y-b)+(x-a)/3; if(sheen<26)f=mixLuxV47(f,0xFFFF,(uint8_t)(sheen<14?3:2));   // kilau kaca miring
+    const int sheen=(y-b)+(x-a)/3; if(sheen<22)f=mixLuxV47(f,0xFFFF,(uint8_t)(sheen<12?2:1));   // kilau kaca miring (tipis)
     return f;
   }
   luxCardV47(sel,&a,&b,&c,&d); const int r2=luxRdV47(x,y,a,b,c,d,10);   // cahaya tipis 3 px di luar kartu terpilih
