@@ -1,4 +1,6 @@
 /*
+  RS16 V36.9.12 (25 Nov 2026): menu terpilih tidak buram lagi: sorot biru di belakang ikon dihapus (ikon biru menyatu),
+    diganti tepi neon 3 px yang tegas + cahaya luar tipis. Isi kartu terpilih gelap netral.
   RS16 V36.9.11 (25 Nov 2026): menu utama premium "Carbon & Chrome" (pilihan pemilik): latar serat karbon, kartu
     bertepi krom + kilau kaca, menu terpilih neon biru bercahaya, bilah keterangan di bawah. Bitmap/ikon/logo tetap.
   RS16 V36.9.10 (25 Nov 2026): menu utama mewah (pilihan pemilik: kartu kaca + sorot biru). Latar gradasi biru,
@@ -5866,8 +5868,8 @@ static void drawMenuLabelsV45(){
 
 // ===== V36.9.11 MENU UTAMA PREMIUM "CARBON & CHROME" (pilihan pemilik 25 Nov 2026) =====
 // Bitmap RS16_MENU_RLE (ikon & logo) TIDAK diubah: setelah digambar ke framebuffer, piksel hitam latarnya diganti
-// serat karbon + kartu bertepi krom dengan kilau kaca; menu terpilih bertepi neon biru, bercahaya (bloom) dan
-// ada sorot biru di belakang ikon; bilah bawah menampilkan keterangan menu terpilih.
+// serat karbon + kartu bertepi krom dengan kilau kaca; menu terpilih bertepi neon biru 3 px + cahaya tipis
+// (V36.9.12: tanpa sorot di belakang ikon supaya ikon tetap tajam); bilah bawah = keterangan menu terpilih.
 // Warna dibatasi (+-110) karena framebuffer memakai palet 256 warna.
 #define RGB_LUX(r,g,b) ((uint16_t)((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|((b)>>3)))
 static uint16_t mixLuxV47(uint16_t a,uint16_t b,uint8_t k16){   // k16 0..16: 0=a, 16=b
@@ -5890,21 +5892,17 @@ static uint16_t luxBgV47(int16_t x,int16_t y,uint8_t sel){
   int16_t a,b,c,d; luxCardV47(i,&a,&b,&c,&d); const bool s=(i==sel); const int rd=luxRdV47(x,y,a,b,c,d,10);
   if(rd<=0){
     const int vy=(y-b)*16/(d-b);
-    if(rd>=-1){   // tepi 2 px: krom (terang atas -> gelap bawah), neon biru untuk menu terpilih
-      if(s)return rd==0?RGB_LUX(90,190,255):RGB_LUX(40,140,255);
-      return mixLuxV47(RGB_LUX(170,180,200),RGB_LUX(36,42,54),(uint8_t)(vy>16?16:vy));
-    }
-    uint16_t f=s?RGB_LUX(10,30,64):RGB_LUX(16,20,28);            // isi kartu, makin gelap ke bawah
+    // V36.9.12: menu terpilih ditandai TEPI NEON 3 px yang tegas; isi kartu tetap gelap netral (tanpa sorot biru)
+    // supaya ikon (yang juga berwarna biru) tetap kontras dan tajam.
+    if(s&&rd>=-2){static const uint16_t NE[3]={RGB_LUX(140,215,255),RGB_LUX(60,165,255),RGB_LUX(24,96,200)};return NE[-rd];}
+    if(!s&&rd>=-1)return mixLuxV47(RGB_LUX(170,180,200),RGB_LUX(36,42,54),(uint8_t)(vy>16?16:vy));   // tepi krom 2 px
+    uint16_t f=s?RGB_LUX(20,26,38):RGB_LUX(16,20,28);            // isi kartu, makin gelap ke bawah
     f=mixLuxV47(f,0x0000,(uint8_t)(vy/3));
     const int sheen=(y-b)+(x-a)/3; if(sheen<26)f=mixLuxV47(f,0xFFFF,(uint8_t)(sheen<14?3:2));   // kilau kaca miring
-    if(s){   // sorot biru di belakang ikon terpilih
-      const int16_t cy=(i<4)?70:162; const float sx=(x-luxCxV47(i))/40.0f,sy=(y-cy)/36.0f; const float k=1.0f-(sx*sx+sy*sy);
-      if(k>0){const uint8_t lv=(uint8_t)(k*k*5.0f);if(lv)f=mixLuxV47(f,RGB_LUX(30,130,255),(uint8_t)(lv*2));}
-    }
     return f;
   }
-  luxCardV47(sel,&a,&b,&c,&d); const int r2=luxRdV47(x,y,a,b,c,d,10);   // cahaya (bloom) di luar kartu terpilih
-  if(r2>0&&r2<=6)return mixLuxV47(base,RGB_LUX(30,140,255),(uint8_t)(14-r2*2));
+  luxCardV47(sel,&a,&b,&c,&d); const int r2=luxRdV47(x,y,a,b,c,d,10);   // cahaya tipis 3 px di luar kartu terpilih
+  if(r2>0&&r2<=3)return mixLuxV47(base,RGB_LUX(40,150,255),(uint8_t)(r2==1?9:(r2==2?5:2)));
   return base;
 }
 static const char* const MENU_SUB_V47[8]={"1/4 MILE  -  1/8 MILE  -  0-100 KM/H","LAP TIMER  -  SEKTOR  -  BEST LAP","REKAM DATA GPS KE MICRO SD",
@@ -10443,8 +10441,8 @@ static uint32_t otaLastActivityMsV36=0;
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9.11"
-#define RS16_FW_VERSION_NUM "36.9.11"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.12"
+#define RS16_FW_VERSION_NUM "36.9.12"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9.6: aplikasi "RS16 Race Speed" 1.2.0 (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xEC,0xBD,0xDB,0x72,0x1B,0x49,0xB6,0x28,0xF6,0xAE,0xAF,0xC8,0x46,0xCF,0x0C,0x80,0x11,0x00,0x56,0x15,0x2E,0x04,
@@ -13882,7 +13880,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.11");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.12");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
