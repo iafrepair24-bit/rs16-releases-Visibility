@@ -1,4 +1,6 @@
 /*
+  RS16 V36.9.11 (25 Nov 2026): menu utama premium "Carbon & Chrome" (pilihan pemilik): latar serat karbon, kartu
+    bertepi krom + kilau kaca, menu terpilih neon biru bercahaya, bilah keterangan di bawah. Bitmap/ikon/logo tetap.
   RS16 V36.9.10 (25 Nov 2026): menu utama mewah (pilihan pemilik: kartu kaca + sorot biru). Latar gradasi biru,
     tiap menu di kartu gelap, menu terpilih kartunya menyala biru + sorot cahaya di belakang ikon. Bitmap, ikon & logo tetap.
   RS16 V36.9.9 (25 Nov 2026): tulisan menu utama diperbesar, tetap 1 baris (huruf sempit Roboto Condensed 9 px).
@@ -5862,57 +5864,62 @@ static void drawMenuLabelsV45(){
   }
 }
 
-// ===== V36.9.10 MENU UTAMA MEWAH (pilihan pemilik 25 Nov 2026: gabungan kartu kaca + sorot biru) =====
-// Bitmap RS16_MENU_RLE (ikon & logo) TIDAK diubah: setelah digambar ke framebuffer, piksel hitam latarnya
-// diganti gradasi biru gelap + kartu kaca; menu terpilih kartunya menyala biru dengan sorot cahaya di belakang ikon.
-// Warna dibatasi (+-60) karena framebuffer memakai palet 256 warna.
+// ===== V36.9.11 MENU UTAMA PREMIUM "CARBON & CHROME" (pilihan pemilik 25 Nov 2026) =====
+// Bitmap RS16_MENU_RLE (ikon & logo) TIDAK diubah: setelah digambar ke framebuffer, piksel hitam latarnya diganti
+// serat karbon + kartu bertepi krom dengan kilau kaca; menu terpilih bertepi neon biru, bercahaya (bloom) dan
+// ada sorot biru di belakang ikon; bilah bawah menampilkan keterangan menu terpilih.
+// Warna dibatasi (+-110) karena framebuffer memakai palet 256 warna.
 #define RGB_LUX(r,g,b) ((uint16_t)((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|((b)>>3)))
-static uint16_t mixLuxV46(uint16_t a,uint16_t b,uint8_t k16){   // k16 0..16: 0=a, 16=b
+static uint16_t mixLuxV47(uint16_t a,uint16_t b,uint8_t k16){   // k16 0..16: 0=a, 16=b
   const int ar=(a>>11)&31,ag=(a>>5)&63,ab=a&31,br=(b>>11)&31,bg=(b>>5)&63,bb=b&31;
   return (uint16_t)(((ar+(br-ar)*k16/16)<<11)|((ag+(bg-ag)*k16/16)<<5)|(ab+(bb-ab)*k16/16));
 }
-static int16_t luxCxV46(uint8_t i){return 47+(i%4)*76;}
-static void luxCardV46(uint8_t i,int16_t* x0,int16_t* y0,int16_t* x1,int16_t* y1){const int16_t cx=luxCxV46(i);*x0=cx-37;*x1=cx+36;if(i<4){*y0=37;*y1=127;}else{*y0=131;*y1=221;}}
-static bool luxInRoundV46(int16_t x,int16_t y,int16_t x0,int16_t y0,int16_t x1,int16_t y1,int16_t r){
-  if(x<x0||x>x1||y<y0||y>y1)return false;
+static int16_t luxCxV47(uint8_t i){return 47+(i%4)*76;}
+static void luxCardV47(uint8_t i,int16_t* x0,int16_t* y0,int16_t* x1,int16_t* y1){const int16_t cx=luxCxV47(i);*x0=cx-36;*x1=cx+35;if(i<4){*y0=36;*y1=124;}else{*y0=128;*y1=216;}}
+// jarak (px, dibulatkan) dari tepi kotak bersudut bulat: <=0 di dalam
+static int luxRdV47(int16_t x,int16_t y,int16_t x0,int16_t y0,int16_t x1,int16_t y1,int16_t r){
   const int16_t cx=x<x0+r?x0+r:(x>x1-r?x1-r:x),cy=y<y0+r?y0+r:(y>y1-r?y1-r:y);
-  const int dx=x-cx,dy=y-cy;return dx*dx+dy*dy<=r*r;
+  const float dx=x-cx,dy=y-cy;return (int)lroundf(sqrtf(dx*dx+dy*dy)-r);
 }
-// latar di titik (x,y) -- menggantikan piksel hitam bitmap. Jumlah warna dibatasi (palet layar 256 warna).
-static uint16_t luxBgV46V(int16_t x,int16_t y,uint8_t sel){
-  const int t=y*10/240; const float dx=(x-160)/150.0f,dy=(y-125)/110.0f; float q=1.0f-(dx*dx+dy*dy); if(q<0)q=0;
-  const int g=(int)(q*q*6.0f);
-  const uint16_t base=RGB_LUX(4+t/2*2,8+t+g*4,18+t*2+g*8);
-  int8_t col=(int8_t)((x-9)/76); if(col<0)col=0; if(col>3)col=3; const uint8_t i=(uint8_t)(col+(y<129?0:4));
-  int16_t a,b,c,d; luxCardV46(i,&a,&b,&c,&d);
-  const bool s=(i==sel);
-  if(luxInRoundV46(x,y,a,b,c,d,9)){
-    if(!luxInRoundV46(x,y,a+1,b+1,c-1,d-1,8))return s?RGB_LUX(48,160,255):RGB_LUX(40,58,92);   // tepi 1 px
-    if(s&&!luxInRoundV46(x,y,a+2,b+2,c-2,d-2,7))return RGB_LUX(22,96,200);                    // tepi dalam kartu terpilih
-    const int v=(y-b)*6/(d-b+1);                                                                     // kartu: atas terang -> bawah gelap
-    if(!s)return RGB_LUX(12,18,36-v*2);
-    uint16_t f=RGB_LUX(12,30,70-v*4);
-    // sorot cahaya biru di belakang ikon terpilih
-    const int16_t cy=(i<4)?72:164; const float sx=(x-luxCxV46(i))/40.0f,sy=(y-cy)/36.0f; float k=1.0f-(sx*sx+sy*sy);
-    if(k>0){const uint8_t lv=(uint8_t)(k*k*6.0f);if(lv)f=mixLuxV46(f,RGB_LUX(30,120,255),(uint8_t)(lv*2));}
+static uint16_t luxBgV47(int16_t x,int16_t y,uint8_t sel){
+  // serat karbon: anyaman 4x4, 3 tingkat warna
+  static const uint16_t CF[3]={RGB_LUX(10,11,14),RGB_LUX(18,19,24),RGB_LUX(26,28,34)};
+  const bool o=((x>>2)+(y>>2))&1; const int sh=o?(x&3):(y&3);
+  const uint16_t base=CF[(sh==0||sh==3)?0:(sh==1?1:2)];
+  int8_t col=(int8_t)((x-9)/76); if(col<0)col=0; if(col>3)col=3; const uint8_t i=(uint8_t)(col+(y<126?0:4));
+  int16_t a,b,c,d; luxCardV47(i,&a,&b,&c,&d); const bool s=(i==sel); const int rd=luxRdV47(x,y,a,b,c,d,10);
+  if(rd<=0){
+    const int vy=(y-b)*16/(d-b);
+    if(rd>=-1){   // tepi 2 px: krom (terang atas -> gelap bawah), neon biru untuk menu terpilih
+      if(s)return rd==0?RGB_LUX(90,190,255):RGB_LUX(40,140,255);
+      return mixLuxV47(RGB_LUX(170,180,200),RGB_LUX(36,42,54),(uint8_t)(vy>16?16:vy));
+    }
+    uint16_t f=s?RGB_LUX(10,30,64):RGB_LUX(16,20,28);            // isi kartu, makin gelap ke bawah
+    f=mixLuxV47(f,0x0000,(uint8_t)(vy/3));
+    const int sheen=(y-b)+(x-a)/3; if(sheen<26)f=mixLuxV47(f,0xFFFF,(uint8_t)(sheen<14?3:2));   // kilau kaca miring
+    if(s){   // sorot biru di belakang ikon terpilih
+      const int16_t cy=(i<4)?70:162; const float sx=(x-luxCxV47(i))/40.0f,sy=(y-cy)/36.0f; const float k=1.0f-(sx*sx+sy*sy);
+      if(k>0){const uint8_t lv=(uint8_t)(k*k*5.0f);if(lv)f=mixLuxV47(f,RGB_LUX(30,130,255),(uint8_t)(lv*2));}
+    }
     return f;
   }
-  // cahaya tipis di luar kartu terpilih (warna tetap, tidak ikut gradasi -> hemat palet)
-  luxCardV46(sel,&a,&b,&c,&d);
-  for(int k=1;k<=3;k++)if(luxInRoundV46(x,y,a-k,b-k,c+k,d+k,9+k)){static const uint16_t gl[3]={RGB_LUX(18,70,160),RGB_LUX(12,44,104),RGB_LUX(8,26,64)};return gl[k-1];}
+  luxCardV47(sel,&a,&b,&c,&d); const int r2=luxRdV47(x,y,a,b,c,d,10);   // cahaya (bloom) di luar kartu terpilih
+  if(r2>0&&r2<=6)return mixLuxV47(base,RGB_LUX(30,140,255),(uint8_t)(14-r2*2));
   return base;
 }
-static void drawMenuLuxV46(uint8_t sel){
+static const char* const MENU_SUB_V47[8]={"1/4 MILE  -  1/8 MILE  -  0-100 KM/H","LAP TIMER  -  SEKTOR  -  BEST LAP","REKAM DATA GPS KE MICRO SD",
+  "STATUS SINYAL & SATELIT GNSS","G-METER  -  KALIBRASI IMU","RIWAYAT DRAG & CIRCUIT","WIFI  -  APLIKASI HP  -  UPDATE","LAYAR  -  SUARA  -  SISTEM"};
+static void drawMenuLuxV47(uint8_t sel){
   fillRect(0,104,320,32,0x0000);fillRect(0,198,320,42,0x0000);   // tulisan lama di bitmap dibuang (jadi latar)
   for(int16_t y=30;y<LCD_H;y++){
     uint8_t* row=&fbV36[(uint32_t)y*LCD_W];
-    for(int16_t x=0;x<LCD_W;x++)if(fbPalV36[row[x]]==0x0000)row[x]=fbColorIndexV36(luxBgV46V(x,y,sel));
+    for(int16_t x=0;x<LCD_W;x++)if(fbPalV36[row[x]]==0x0000)row[x]=fbColorIndexV36(luxBgV47(x,y,sel));
   }
-  for(uint8_t i=0;i<8;i++){
+  for(uint8_t i=0;i<8;i++){   // label 1 baris
     const int16_t w=MENU_LBL_W_V45[i];
-    int16_t x=luxCxV46(i)-w/2; if(x<2)x=2; if(x+w>318)x=318-w;
-    const int16_t y=((i<4)?117:210)-MENU_LBL_H_V45/2;
-    const uint16_t col=(i==sel)?C_V31_WHITE:RGB_LUX(196,206,224);
+    int16_t x=luxCxV47(i)-w/2; if(x<2)x=2; if(x+w>318)x=318-w;
+    const int16_t y=((i<4)?112:204)-MENU_LBL_H_V45/2;
+    const uint16_t col=(i==sel)?C_V31_WHITE:RGB_LUX(190,198,214);
     uint32_t p=MENU_LBL_OFF_V45[i];
     for(int16_t r=0;r<MENU_LBL_H_V45;r++)for(int16_t c=0;c<w;c++,p++){
       const uint8_t v=(pgm_read_byte(&MENU_LBL_BITS_V45[p>>2])>>(6-2*(p&3)))&3;
@@ -5920,13 +5927,17 @@ static void drawMenuLuxV46(uint8_t sel){
       else if(v)fillRect(x+c,y+r,1,1,blend565V37(col,pixelUnderV37(x+c,y+r,C_V31_BG),v));
     }
   }
+  // bilah keterangan bawah: garis biru memudar ke pinggir + teks keterangan menu terpilih
+  for(int16_t x=0;x<LCD_W;x++){const int e=x<160?x:319-x;fillRect(x,221,1,1,mixLuxV47(0x0000,RGB_LUX(40,140,255),(uint8_t)(e>80?16:e/5)));}
+  fillRect(0,222,320,18,RGB_LUX(6,8,12));
+  drawTextCenteredV31(160,226,MENU_SUB_V47[sel<8?sel:0],RGB_LUX(150,170,200),1);
 }
 
 void drawSelectedMenu(uint8_t index) {
   const bool fbOwnV37=fbFrameBeginV37(200);
   drawMenuBitmap();
-  if(fbActiveV36&&fbV36){            // V36.9.10 tampilan mewah (butuh framebuffer)
-    drawMenuLuxV46(index);
+  if(fbActiveV36&&fbV36){            // V36.9.11 tampilan premium carbon & chrome (butuh framebuffer)
+    drawMenuLuxV47(index);
     drawTopBarStatusOnlyV32();
   }else{                             // cadangan tanpa framebuffer: label besar + kotak putih seperti V36.9.9
     drawMenuLabelsV45();
@@ -10432,8 +10443,8 @@ static uint32_t otaLastActivityMsV36=0;
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9.10"
-#define RS16_FW_VERSION_NUM "36.9.10"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.11"
+#define RS16_FW_VERSION_NUM "36.9.11"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9.6: aplikasi "RS16 Race Speed" 1.2.0 (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xEC,0xBD,0xDB,0x72,0x1B,0x49,0xB6,0x28,0xF6,0xAE,0xAF,0xC8,0x46,0xCF,0x0C,0x80,0x11,0x00,0x56,0x15,0x2E,0x04,
@@ -13871,7 +13882,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.10");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.11");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
