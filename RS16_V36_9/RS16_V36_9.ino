@@ -1,4 +1,6 @@
 /*
+  RS16 V36.9.13 (25 Nov 2026): CIRCUIT -- sesi disimpan otomatis ke IC flash tiap lap selesai (1 sesi = 1 rekaman,
+    ditimpa di tempat), saat STOP, dan saat alat dimatikan di tengah sesi. Hitungan lap (serviceCircuitV31) tidak diubah.
   RS16 V36.9.12 (25 Nov 2026): menu terpilih tidak buram lagi: sorot biru di belakang ikon dihapus (ikon biru menyatu),
     diganti tepi neon 3 px yang tegas + cahaya luar tipis. Latar karbon & kartu dibuat +-50% lebih gelap karena di LCD
     asli warna gelap tampil jauh lebih terang (foto pemilik) -> ikon lebih kontras.
@@ -10089,8 +10091,11 @@ struct CircLogV38{uint32_t magic;uint8_t hh,mm,ss,pad;uint16_t laps,stored;uint3
   uint32_t lap[CIRC_LAPS_V38];uint32_t s1[CIRC_LAPS_V38];uint32_t s2[CIRC_LAPS_V38];};
 static CircLogV38 circLogV38;   // dipakai mengumpulkan lap saat sesi berjalan & untuk layar detail
 static uint32_t circStartYmdV38=0;static uint8_t circStartHV38=0,circStartMV38=0,circStartSV38=0;static bool circStartOkV38=false;
+// V36.9.13: satu sesi = satu rekaman. Rekaman ditulis otomatis tiap lap selesai (lalu ditimpa di tempat yang sama),
+// saat STOP, dan saat alat dimatikan di tengah sesi -> lap tidak hilang kalau sesi tidak diakhiri dengan STOP.
+static int32_t circRecIdxV49=-1;static uint32_t circRecYmdV49=0;static uint16_t circSavedLapsV49=0;
 static void circLogBeginV38(){
-  memset(&circLogV38,0,sizeof(circLogV38));
+  memset(&circLogV38,0,sizeof(circLogV38));circRecIdxV49=-1;circRecYmdV49=0;circSavedLapsV49=0;
   circStartOkV38=localNowV38(&circStartYmdV38,&circStartHV38,&circStartMV38,&circStartSV38);
 }
 static void circLogLapV38(uint16_t lapNo,uint32_t ms,const uint32_t* sec,uint8_t secIdx){
@@ -10103,12 +10108,22 @@ static void circLogSaveV38(uint16_t laps,uint32_t best,float maxKmh){
   CircLogV38& r=circLogV38;r.magic=CIRCLOG_MAGIC_V38;r.laps=laps;r.best=best;r.maxSpd10=(uint16_t)constrain(maxKmh*10.0f,0.0f,65000.0f);
   uint32_t ymd=circStartYmdV38;
   if(circStartOkV38){r.hh=circStartHV38;r.mm=circStartMV38;r.ss=circStartSV38;}
-  else{uint8_t h,m,ss;if(localNowV38(&ymd,&h,&m,&ss)){r.hh=h;r.mm=m;r.ss=ss;}else ymd=0;}
-  runLogMakeRoomV38();
-  char pth[24];logPathV38('c',ymd,pth,sizeof(pth));
-  File f=HFS.open(pth,"a");if(!f){Serial.println("RIWAYAT CIRCUIT: gagal buka file");return;}
-  const size_t w=f.write((const uint8_t*)&r,sizeof(r));f.close();
-  Serial.printf("RIWAYAT CIRCUIT: %08lu %02u.%02u %u LAP %s\n",(unsigned long)ymd,r.hh,r.mm,(unsigned)laps,w==sizeof(r)?"OK":"GAGAL");
+  else{uint8_t h,m,ss;if(localNowV38(&ymd,&h,&m,&ss)){r.hh=h;r.mm=m;r.ss=ss;   // jam baru ada setelah sesi mulai:
+      circStartYmdV38=ymd;circStartHV38=h;circStartMV38=m;circStartSV38=ss;circStartOkV38=true;}else ymd=0;}   // kunci untuk simpan berikutnya
+  size_t w=0;
+  if(circRecIdxV49<0){   // tulisan pertama sesi ini: tambah rekaman baru di akhir file tanggal itu
+    runLogMakeRoomV38();
+    char pth[24];logPathV38('c',ymd,pth,sizeof(pth));
+    File f=HFS.open(pth,"a");if(!f){Serial.println("RIWAYAT CIRCUIT: gagal buka file");return;}
+    const size_t pos=f.size();w=f.write((const uint8_t*)&r,sizeof(r));f.close();
+    if(w==sizeof(r)){circRecIdxV49=(int32_t)(pos/sizeof(r));circRecYmdV49=ymd;}
+  }else{                 // tulisan berikutnya: timpa rekaman yang sama (tidak dobel di HISTORY)
+    ymd=circRecYmdV49;char pth[24];logPathV38('c',ymd,pth,sizeof(pth));
+    File f=HFS.open(pth,"r+");if(!f){Serial.println("RIWAYAT CIRCUIT: gagal buka file");return;}
+    if(f.seek((uint32_t)circRecIdxV49*sizeof(r)))w=f.write((const uint8_t*)&r,sizeof(r));f.close();
+  }
+  if(w==sizeof(r))circSavedLapsV49=laps;
+  Serial.printf("RIWAYAT CIRCUIT: %08lu %02u.%02u %u LAP #%ld %s\n",(unsigned long)ymd,r.hh,r.mm,(unsigned)laps,(long)circRecIdxV49,w==sizeof(r)?"OK":"GAGAL");
 }
 static bool circLogReadV38(uint32_t ymd,uint16_t idx){
   if(!runFsOkV38)return false;char pth[24];logPathV38('c',ymd,pth,sizeof(pth));
@@ -10442,8 +10457,8 @@ static uint32_t otaLastActivityMsV36=0;
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9.12"
-#define RS16_FW_VERSION_NUM "36.9.12"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.13"
+#define RS16_FW_VERSION_NUM "36.9.13"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9.6: aplikasi "RS16 Race Speed" 1.2.0 (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xEC,0xBD,0xDB,0x72,0x1B,0x49,0xB6,0x28,0xF6,0xAE,0xAF,0xC8,0x46,0xCF,0x0C,0x80,0x11,0x00,0x56,0x15,0x2E,0x04,
@@ -12247,8 +12262,16 @@ static void serviceWifiV31(){
 // PCB V2 100x55 tidak punya latch daya (GPIO12 tidak tersambung): ESP32 masuk deep sleep, beban turun,
 // IP5306 mematikan boost sendiri saat arus beban kecil. Bangun: tombol apa saja (PCF_INT -> GPIO13 LOW)
 // atau POWER (KEY IP5306 menyalakan lagi -> boot normal).
+// V36.9.13 simpan otomatis sesi CIRCUIT: dipanggil di loop (DI LUAR serviceCircuitV31 yang dikunci -> hitungan lap
+// tidak tersentuh). Begitu jumlah lap bertambah, rekaman sesi ditulis/ditimpa di IC flash.
+static void serviceCircAutosaveV49(){
+  if(uiTestScreen!=UI_CIRCUIT_RUNNING||!circuitRtV31.active)return;
+  if(circuitRtV31.lapCount>circSavedLapsV49)circLogSaveV38(circuitRtV31.lapCount,circuitRtV31.bestLapMs,circuitRtV31.maxSpeed);
+}
 static void powerOffV36(const char* reason){
   Serial.printf("POWER OFF: %s\n",reason);
+  if(uiTestScreen==UI_CIRCUIT_RUNNING&&circuitRtV31.active&&circuitRtV31.lapCount>0){   // V36.9.13: sesi circuit belum di-STOP
+    circuitRtV31.active=false;circLogSaveV38(circuitRtV31.lapCount,circuitRtV31.bestLapMs,circuitRtV31.maxSpeed);}
   loggerStopV31();
   stopWifiV31();
   fillScreen(C_V31_BG);
@@ -13881,7 +13904,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.12");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.13");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
@@ -14801,5 +14824,5 @@ void loop(){
      Serial.printf("ALIVE %lus  layar=%u  sat=%u  fix=%u  bat=%.2fV  heap=%u\n",
        (unsigned long)(nowHb/1000UL),(unsigned)uiTestScreen,(unsigned)gpsSatellitesV30,
        (unsigned)gpsFixTypeV30,batteryVoltageV31,(unsigned)ESP.getFreeHeap());}}
-  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();printGpsDiagnosticV30();delay(1);
+  serviceGpsScanV40();serviceGps25HzV30();serviceGnssRateAutoV40();serviceImuRetryV40();serviceGpsReadyLatchV35();serviceGpsLedV40();serviceGpsStaleSpeedV36();serviceGpsRecoveryV32();serviceImuV31();serviceBatteryWarningBeepV31();serviceTelemetryV31();serviceDragV31();serviceCircuitV31();serviceLoggerV31();serviceWifiV31();updateBatteryV31();serviceBatteryProtectionV36();serviceDragFinishFreezeV36();serviceDragReadyUiV33();handleButtonsV31();serviceGpsLockPopupV36();serviceSerialCommandsV31();renderDynamicV31();serviceTopBarOnlyV31();serviceAutoShutdownV31();serviceCircAutosaveV49();printGpsDiagnosticV30();delay(1);
 }
