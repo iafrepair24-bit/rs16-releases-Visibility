@@ -43,6 +43,8 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
 
 - Bahasa komunikasi dengan pemilik: Indonesia. "Kerjakan" = perintah untuk melaksanakan.
 - Jangan ubah logo dan bitmap menu utama.
+  (25 Nov 2026, perintah pemilik: tulisan menu utama diperbesar lewat `drawMenuLabelsV45()` yang menimpa pita tulisan
+  saat digambar; data bitmap `RS16_MENU_RLE`, ikon & logo tetap tidak diubah.)
 - Hardware: PCB V2 100x55 (ESP32-WROOM-32). IMU U8 = LSM6 (footprint ICM-42688 LGA-14, pin kompatibel).
 - IC flash W25Q128 (U7, CS GPIO25) KHUSUS untuk riwayat balap (perintah pemilik 24 Nov 2026): /h DRAG, /c CIRCUIT,
   littlefs di `RS16_V36_9/src/rlfs`. Flash internal (LittleFS) hanya cadangan kalau U7 tidak terbaca.

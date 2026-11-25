@@ -1,4 +1,6 @@
 /*
+  RS16 V36.9.9 (25 Nov 2026): tulisan menu utama diperbesar (font RS16 9 px, label panjang 2 baris).
+    Bitmap menu utama, ikon & logo tidak diubah; hanya pita tulisannya yang ditimpa saat digambar.
   RS16 V36.9.8 (24 Nov 2026): GNSS UPDATE RATE bisa dipilih lagi (perintah pemilik): 15 HZ = 0,06 s, 25 HZ = 0,04 s
     (gnssPickRateV40 diubah atas perintah itu). IMU: deteksi juga di SPI 100 kHz; layar SENSOR INFO saat
     IMU tidak ada -> tekan START = diagnosa (jalur CS/MISO, SPI 4 mode x 3 kecepatan, I2C) + kesimpulan.
@@ -5788,9 +5790,25 @@ static void drawMenuSelectBoxV36(uint8_t index){
   }
 }
 
+// V36.9.9 (perintah pemilik 25 Nov 2026 "perbesar font di menu utama"): tulisan menu di bitmap (+-6 px) ditimpa
+// tulisan font RS16 9 px. Data bitmap, ikon & logo TIDAK diubah -- hanya pita tulisan di bawah ikon yang ditimpa saat digambar.
+// Label yang lebih lebar dari kartu (76 px) dipecah 2 baris.
+static void drawMenuLabelsV45(){
+  static const char* const L1[8]={"DRAG","CIRCUIT","GPS","GPS","ACCELE-","HISTORY","APPLI-","SETTINGS"};
+  static const char* const L2[8]={nullptr,nullptr,"LOGGER","SATELLITE","RATION",nullptr,"CATION",nullptr};
+  fillRect(0,104,320,32,C_V31_BG);    // pita tulisan baris atas (ikon berakhir < y100, mulai lagi > y137)
+  fillRect(0,198,320,42,C_V31_BG);    // pita tulisan baris bawah (ikon berakhir < y190)
+  for(uint8_t i=0;i<8;i++){
+    const int16_t cx=CARD_X[i]+CARD_W/2, cy=(i<4)?117:210;   // tengah tulisan lama di bitmap
+    if(L2[i]){drawTextCenteredV31(cx,cy-13,L1[i],C_V31_WHITE,1);drawTextCenteredV31(cx,cy+1,L2[i],C_V31_WHITE,1);}
+    else drawTextCenteredV31(cx,cy-6,L1[i],C_V31_WHITE,1);
+  }
+}
+
 void drawSelectedMenu(uint8_t index) {
   const bool fbOwnV37=fbFrameBeginV37(200);
   drawMenuBitmap();
+  drawMenuLabelsV45();
   drawTopBarStatusOnlyV32();
 
   // V36.1 hanya menu terpilih yang dikasih kotak (sudut membulat halus, abu-abu)
@@ -10294,8 +10312,8 @@ static uint32_t otaLastActivityMsV36=0;
 //   POST /api/update?size=<byte>  -> multipart, field "firmware" = file .bin, header Basic auth
 //                                    (user "rs16", password = password OTA). Balas {"ok":..,"error":".."}
 //   POST /update (lama) & GET /status (lama) tetap ada.
-#define RS16_FW_VERSION "V36.9.8"
-#define RS16_FW_VERSION_NUM "36.9.8"   // dipakai aplikasi (HELLO) untuk membandingkan versi
+#define RS16_FW_VERSION "V36.9.9"
+#define RS16_FW_VERSION_NUM "36.9.9"   // dipakai aplikasi (HELLO) untuk membandingkan versi
 // V36.9.6: aplikasi "RS16 Race Speed" 1.2.0 (assets/index.html dari proyek APK pemilik), gzip level 9
 static const uint8_t RS16_APP_HTML_GZ_V41[] PROGMEM = {
   0x1F,0x8B,0x08,0x00,0x00,0x00,0x00,0x00,0x02,0xFF,0xEC,0xBD,0xDB,0x72,0x1B,0x49,0xB6,0x28,0xF6,0xAE,0xAF,0xC8,0x46,0xCF,0x0C,0x80,0x11,0x00,0x56,0x15,0x2E,0x04,
@@ -13733,7 +13751,7 @@ static void drawDisplaySettingsV31(){static const char* const o[4]={"25 %","50 %
 static void drawAutoShutdownV31(){drawBaseV31("AUTO SHUTDOWN");const char* o[]={"OFF","1 MIN","3 MIN","5 MIN","10 MIN"};for(uint8_t i=0;i<5;i++){if(i==autoShutdownIndexV31)drawRoundSelectV36(58,68+i*31,204,29,9);drawTextCenteredV31(160,78+i*31,o[i],i==autoShutdownIndexV31?C_V31_BLUE:C_V31_WHITE,1);}drawTextCenteredV31(160,229,"SELECT AUTO SHUTDOWN",C_V31_GRAY,1);}
 static uint8_t soundSelV36=0;   // V36.2 kursor SOUND sendiri (dulu tampil baris 3 tapi OK mengubah baris 1)
 static void drawSoundSettingsV31(){char a[5],b[5],c[5];boolTextV31(soundCountdownV31,a,sizeof(a));boolTextV31(soundFinishV31,b,sizeof(b));boolTextV31(soundLowBatteryV31,c,sizeof(c));const char* lab[]={"START BEEP","FINISH BEEP","LOW BATTERY"};const char* val[]={a,b,c};drawMenuRowsV31("SOUND",lab,val,3,soundSelV36);drawTextCenteredV31(160,203,"MENU NAVIGATION BEEP OFF",C_V31_GRAY,1);}
-static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.8");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
+static void drawSystemInfoV31(){drawBaseV31("SYSTEM INFO","RS16 V36.9.9");char gps[28],imu[28],bat[28],sd[48];snprintf(gps,sizeof(gps),"GPS %.1F HZ SAT %u",gpsActualRateHzV30,gpsSatellitesV30);snprintf(imu,sizeof(imu),"IMU %s %s",imuChipNameV36(),imuConnectedV31?"READY":"NOT FOUND");if(batteryValidV31)snprintf(bat,sizeof(bat),"BAT %.2F V %u%%",batteryVoltageV31,batteryPercentV31);else snprintf(bat,sizeof(bat),"BAT --");sdDataTextV38(sd,sizeof(sd));char xc[30];snprintf(xc,sizeof(xc),"GPS/IMU %s",gpsImuMismatchV36?"MISMATCH":"OK");char fd[48];flashDataTextV38(fd,sizeof(fd));char fp[32];snprintf(fp,sizeof(fp),"FLASH PROGRAM %u%% TERPAKAI",flashProgPctV38());const char* rows[]={"MICROCONTROLLER",gps,imu,bat,xc,sd,fd,fp,"DATA MANAGEMENT"};for(uint8_t i=0;i<9;i++)drawTextV31(30,70+i*18,rows[i],i==0?C_V31_GRAY:(i==8?C_V31_BLUE:C_V31_WHITE),1);}
 
 static uint8_t dataSelectionV31=0,confirmActionV31=0;
 static void drawDataManagementV31(){const char* lab[]={"DELETE HISTORY","DELETE GPS LOGS","CLEAR ALL DATA","FACTORY RESET","RESTART DEVICE"};const char* val[]={"BEST / LAST / LOG","SD LOG FILES","HISTORY + LOGS","SETTINGS DEFAULT","REBOOT"};drawMenuRowsV31("DATA MANAGEMENT",lab,val,5,dataSelectionV31);}
