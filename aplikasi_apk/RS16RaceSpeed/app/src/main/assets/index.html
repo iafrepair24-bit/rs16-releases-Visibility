@@ -665,7 +665,7 @@ if (false) module.exports = { parseLine, Proc, DragRun, Sim, makeDemoTrack, fmtL
 // ================= APP =================
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 // ---------- versi & jembatan APK ----------
-const APP_VER = '1.3.0';               // versi tampilan aplikasi (naikkan setiap update)
+const APP_VER = '1.3.1';               // versi tampilan aplikasi (naikkan setiap update)
 const NATIVE = window.RS16Native || null; // ada kalau dibuka dari APK RS16
 function nat(fn, ...a) { try { return NATIVE && typeof NATIVE[fn] === 'function' ? NATIVE[fn](...a) : undefined; } catch (e) { console.log('native', fn, e); } }
 function verCmp(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b || '0').split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; } return 0; }
@@ -1060,7 +1060,7 @@ function openDetail(id) {
   const s = store.get('h_' + id, null); if (!s) { toast('Data sesi tidak ditemukan'); return; }
   D = { s, tab: 'lap', sel: null, cursorD: null, map: null };
   if (s.kind === 'track') { D.proc = new Proc({ gates: s.gates }); unpackPts(s.pts).forEach(p => D.proc.push(p)); D.sel = D.proc.best ? D.proc.laps.indexOf(D.proc.best) : null; }
-  if (s.kind === 'circ') { $('#detTitle').textContent = s.label || s.name; $('#detSeg').style.display = 'none'; go('s-detail'); $('#detBody').innerHTML = circDetailHtml(s); return; }
+  if (s.kind === 'circ') { $('#detTitle').textContent = s.label || s.name; $('#detSeg').style.display = 'none'; go('s-detail'); $('#detBody').innerHTML = circDetailHtml(s); initCircMap(s); return; }
   $('#detTitle').textContent = s.kind === 'track' ? s.trackName : s.label;
   $('#detSeg').style.display = s.kind === 'track' ? '' : 'none';
   go('s-detail'); detTab(s.kind === 'track' ? 'lap' : 'drag');
@@ -1512,7 +1512,10 @@ async function importFromDevice(silent) {   // 1.3.0: silent = sinkron otomatis 
         msg(`Mengambil riwayat ${f.t === 'c' ? 'CIRCUIT' : 'DRAG'} ${fmtYmd(f.d)} (${i + 1}/${todo.length})`);
         const res = await fetch(devBase() + `/api/runs?t=${f.t}&d=${f.d}`, { cache: 'no-store' }); if (!res.ok) continue;
         const recs = (await res.json()).filter(r => r.i >= f.from); let n = f.from;
-        for (const r of recs) { const id = f.t === 'c' ? importCirc(f.d, r) : importDragRec(f.d, r); if (!id) { full = true; break; } ok++; n = r.i + 1; if (f.t !== 'c') lastDrag = id; }
+        for (const r of recs) {
+          let path = null;   // 1.3.0 jalur GPS sesi circuit (firmware V36.9.15+)
+          if (f.t === 'c' && r.path > 1) { try { const pr = await fetch(devBase() + `/api/path?d=${f.d}&i=${r.i}`, { cache: 'no-store' }); if (pr.ok) path = await pr.json(); } catch (e) { } }
+          const id = f.t === 'c' ? importCirc(f.d, r, path) : importDragRec(f.d, r); if (!id) { full = true; break; } ok++; n = r.i + 1; if (f.t !== 'c') lastDrag = id; }
         done[f.name] = full ? n : f.n;
       }
       store.set('imported', done);
@@ -1525,7 +1528,7 @@ async function importFromDevice(silent) {   // 1.3.0: silent = sinkron otomatis 
   } catch (e) {
     console.log('import', e && e.stack || e);
     if (silent) { if (!S.syncRetry) { S.syncRetry = 1; setTimeout(() => { S.syncRetry = 0; syncDevice(); }, 6000); } return; }   // alat sibuk mengukur: coba lagi
-    msg(e.message === 'old' ? 'Firmware alat belum mendukung ambil data (perlu V36.10 ke atas). Update firmware alat dulu.' : 'Gagal tersambung ke alat. Pastikan WiFi alat ON dan HP tersambung ke RS16_0016.');
+    msg(e.message === 'old' ? 'Firmware alat belum mendukung ambil data. Update firmware alat ke V36.9.6 atau lebih baru.' : e.message === 'HTTP 409' ? 'Alat sedang mengukur (run / sesi circuit / logger berjalan). Selesaikan dulu di alat, lalu ulangi.' : 'Gagal tersambung ke alat (' + (e.name === 'TypeError' ? 'jaringan: ' : '') + e.message + '). Pastikan WiFi alat ON (menu APPLICATION) dan HP tersambung ke RS16_0016.');
   } finally { S.importing = 0; }
 }
 function fmtYmd(d) { d = String(d); return d.slice(6, 8) + '/' + d.slice(4, 6) + '/' + d.slice(0, 4); }
@@ -1537,6 +1540,7 @@ function importDragRec(ymd, r) {
   const M = DEV_MODE[r.mode] || DEV_MODE[0], tg = (r.target || []).filter(x => x > 0), target = tg.length ? tg[tg.length - 1] : 0;
   const tr = []; let d = 0;
   for (let k = 0; k < (r.spd || []).length; k++) { const t = r.t10[k] * 10, v = r.spd[k] / 10; if (k) { const p = tr[k - 1]; d += (p[1] + v) / 2 / 3.6 * (t - p[0]) / 1000; } tr.push([t, +v.toFixed(1), +d.toFixed(1)]); }
+  if (r.lat && r.lon && r.lat.length === tr.length) tr.forEach((v, k) => v.push(+(r.lat[k] / 1e7).toFixed(7), +(r.lon[k] / 1e7).toFixed(7)));   // 1.3.0 jalur GPS dari alat -> peta satelit
   const X = tr.map(v => v[0]), V = tr.map(v => v[1]), Dd = tr.map(v => v[2]);
   const ms = []; (r.target || []).forEach((x, k) => { const t = r.cp[k]; if (x > 0 && t > 0) ms.push(M.u === 'm' ? { label: (x === 402.34 ? '1/4 mile' : x === 201.17 ? '1/8 mile' : Math.round(x) + ' m'), t, v: interp(X, V, t) } : { label: (M.m === 's0s' && k === r.target.length - 1 ? 'kembali 0' : '0-' + Math.round(x) + ' km/h'), t, d: interp(X, Dd, t) }); });
   const time = r.total > 0 ? r.total : (ms.length ? ms[ms.length - 1].t : (X[X.length - 1] || 0));
@@ -1548,20 +1552,34 @@ function importDragRec(ymd, r) {
   pushHist({ id, kind: 'drag', date, name: label + ' · RUN ' + (r.run || r.i + 1), mode: M.m, target, time, trap: sess.trap }); return id;
 }
 // riwayat CIRCUIT dari flash alat (waktu lap & sektor saja)
-function importCirc(ymd, r) {
+function circPathPts(path) {   // [[ms,lat_e7,lon_e7],...] -> [[ms,lat,lon,kmh],...] maks 1500 titik
+  if (!path || path.length < 2) return null;
+  const st = Math.max(1, Math.ceil(path.length / 1500)), o = [];
+  for (let k = 0; k < path.length; k += st) o.push(path[k]);
+  return o.map((p, k) => { const q = o[Math.max(0, k - 1)], a = { lat: p[1] / 1e7, lon: p[2] / 1e7 }, b = { lat: q[1] / 1e7, lon: q[2] / 1e7 }, dt = (p[0] - q[0]) / 1000;
+    return [p[0], +a.lat.toFixed(7), +a.lon.toFixed(7), dt > 0 ? +(dist(a, b) / dt * 3.6).toFixed(1) : 0]; });
+}
+function importCirc(ymd, r, path) {
   const id = uid(), date = ymdDate(ymd, r), lap = (r.lap || []).map(x => x > 0 ? x : null);
-  const sess = { id, kind: 'circ', date, name: 'Circuit (alat)', label: 'Circuit (alat)', laps: r.laps, best: r.best > 0 ? r.best : null, vmax: r.vmax, lap, s1: (r.s1 || []).map(x => x > 0 ? x : null), s2: (r.s2 || []).map(x => x > 0 ? x : null) };
+  const sess = { id, kind: 'circ', date, name: 'Circuit (alat)', label: 'Circuit (alat)', laps: r.laps, best: r.best > 0 ? r.best : null, vmax: r.vmax, lap, s1: (r.s1 || []).map(x => x > 0 ? x : null), s2: (r.s2 || []).map(x => x > 0 ? x : null), path: circPathPts(path) };
   if (!store.set('h_' + id, sess)) return null;
   pushHist({ id, kind: 'circ', date, name: sess.name, laps: r.laps, best: sess.best, vmax: r.vmax }); return id;
+}
+function initCircMap(s) {   // 1.3.0 jalur sesi circuit dari alat di peta satelit
+  const cv = $('#circMap'); if (!cv || !s.path) return;
+  const pts = s.path.map(p => ({ t: p[0], lat: p[1], lon: p[2], spd: p[3], d: 0 }));
+  const m = mapFor(cv); m.fitNext = true; m.draw = () => m.render(pts, [], { start: true }); m.onTap = null;
+  requestAnimationFrame(() => m.draw());
 }
 function circDetailHtml(s) {
   const L = s.lap.map((t, i) => ({ n: i + 1, t, a: s.s1[i], b: s.s2[i] })).filter(x => x.t), mx = Math.max(...L.map(x => x.t)), mn = Math.min(...L.map(x => x.t));
   const hasS = L.some(x => x.a != null);
   return `<div class="pad"><p class="note">${fmtDate(s.date)} · data dari alat</p>
-  <div class="big3"><div class="box best"><div class="k">Best</div><div class="v num">${s.best ? fmtLap(s.best) : '--'}</div></div><div class="box"><div class="k">Lap</div><div class="v num">${s.laps}</div></div><div class="box"><div class="k">Top</div><div class="v num">${Math.round(s.vmax || 0)}</div></div></div>
+  <div class="big3"><div class="box best"><div class="k">Best</div><div class="v num">${s.best ? fmtLap(s.best) : '--'}</div></div><div class="box"><div class="k">Lap</div><div class="v num">${s.laps}</div></div><div class="box"><div class="k">Top</div><div class="v num">${Math.round(s.vmax || 0)}</div></div></div>${s.path ? '<h3>Jalur (peta satelit)</h3><div class="mapwrap"><canvas id="circMap" class="satmap" style="height:42vh"></canvas></div>' : ''}
+  
   <h3>Waktu per lap</h3><div class="lapbars">${L.map(x => `<div class="lb"><span class="num">${x.n}</span><i style="width:${Math.max(8, 100 - (x.t - mn) / Math.max(1, mx - mn) * 60)}%;${x.t === mn ? 'background:var(--best)' : ''}"></i><b class="num">${fmtLap(x.t)}</b></div>`).join('')}</div>
   <table class="t num" style="margin-top:12px"><tr><th>#</th><th>Waktu</th>${hasS ? '<th class="r">S1</th><th class="r">S2</th>' : ''}</tr>${L.map(x => `<tr><td>${x.n}</td><td class="${x.t === mn ? 'best' : ''}">${fmtLap(x.t)}</td>${hasS ? `<td class="r">${fmtSec(x.a)}</td><td class="r">${fmtSec(x.b)}</td>` : ''}</tr>`).join('')}</table>
-  <p class="note" style="margin-top:10px">Riwayat circuit di alat hanya menyimpan waktu lap. Untuk peta & grafik, rekam lewat aplikasi atau aktifkan log microSD.</p></div>`;
+  ${s.path ? '' : '<p class="note" style="margin-top:10px">Sesi ini dari firmware lama: alat belum menyimpan jalur GPS. Sesi baru (firmware V36.9.15+) tampil di peta satelit.</p>'}</div>`;
 }
 // file log microSD: tow_ms,lat,lon,speed_kmh,hacc_m,sacc_kmh,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps
 function importSdCsv(name, txt) {

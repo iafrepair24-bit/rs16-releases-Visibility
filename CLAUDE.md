@@ -59,3 +59,6 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
   Sinkron (aplikasi 1.3.0, firmware V36.9.14+): aplikasi -> alat `SET,DRAG,<quarter|dist|speed|s0s>,<target>` / `SET,CIRCUIT`
   (alat masuk READY / CIRCUIT, ditolak `SET,BUSY` saat mengukur; balasan `SET,OK,<teks>`); alat -> aplikasi `SYNC,h|c,YYYYMMDD`
   setelah hasil tersimpan -> aplikasi mengambil hasil resmi alat (hasil hitungan aplikasi sendiri tidak disimpan saat sinkron).
+  Jalur GPS (firmware V36.9.15+, aplikasi 1.3.1): /p/YYYYMMDD.bin (RunPathV51, per run DRAG), /q/YYYYMMDD_NNN.bin (titik 2 Hz
+  per sesi CIRCUIT); /api/runs ikut kirim lat/lon run drag, GET /api/path?d=&i= jalur sesi circuit. APK mengambil ubin peta
+  satelit lewat jaringan internet (openInternet) walau tersambung WiFi alat.

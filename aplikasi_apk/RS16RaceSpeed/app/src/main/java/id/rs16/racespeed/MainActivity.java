@@ -92,7 +92,27 @@ public class MainActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
-                if (!APP_HOST.equals(u.getHost())) return null;   // ubin satelit, dll -> jaringan biasa
+                String host = u.getHost();
+                // 1.3.1: ubin peta satelit diambil lewat jaringan yang punya internet (data seluler),
+                // karena saat tersambung WiFi alat RS16 seluruh aplikasi diarahkan ke WiFi alat (tanpa internet).
+                if (host != null && host.endsWith("arcgisonline.com")) {
+                    try {
+                        HttpURLConnection h = openInternet(u.toString());
+                        h.setReadTimeout(10000);
+                        if (h.getResponseCode() == 200) {
+                            String ct = h.getContentType();
+                            ct = ct == null ? "image/jpeg" : ct.split(";")[0].trim();
+                            WebResourceResponse res = new WebResourceResponse(ct, null, h.getInputStream());
+                            java.util.Map<String, String> hh = new java.util.HashMap<>();
+                            hh.put("Access-Control-Allow-Origin", "*");
+                            hh.put("Cache-Control", "max-age=604800");
+                            res.setResponseHeaders(hh);
+                            return res;
+                        }
+                    } catch (Exception e) { Log.w(TAG, "ubin peta", e); }
+                    return null;
+                }
+                if (!APP_HOST.equals(host)) return null;   // alat RS16, dll -> jaringan biasa
                 String p = u.getPath() == null ? "/" : u.getPath();
                 if (p.equals("/") || p.equals("/index.html")) {
                     try {
