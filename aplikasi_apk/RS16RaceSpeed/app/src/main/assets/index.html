@@ -192,56 +192,100 @@ table.t .r{text-align:right}
  .more{grid-column:1/3}
 }
 .lapbars{display:flex;flex-direction:column;gap:6px}.lb{display:grid;grid-template-columns:24px 1fr 86px;align-items:center;gap:8px;font-size:13px}.lb i{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,#2f7bff,#7cc0ff)}.lb b{text-align:right}.lb span{color:var(--dim)}
+
+/* ===== v1.3.0 tema KARBON BIRU (layar awal & pilih mode) ===== */
+.screen.carbon{background-color:#101216;background-image:
+ radial-gradient(120% 75% at 50% 42%,transparent 45%,rgba(0,0,0,.72) 100%),
+ radial-gradient(70% 22% at 50% 104%,rgba(47,123,255,.55),transparent 70%),
+ repeating-linear-gradient(45deg,rgba(255,255,255,.045) 0 3px,rgba(0,0,0,0) 3px 6px),
+ repeating-linear-gradient(-45deg,rgba(0,0,0,.42) 0 3px,rgba(0,0,0,0) 3px 6px),
+ linear-gradient(180deg,#191c22,#0c0e12)}
+.h3top{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top) + 16px) 18px 6px}
+.h3top .logo{font-size:24px}
+.avatar.ring{background:#0d1016;box-shadow:0 0 0 2px #2f7bff,0 0 14px rgba(47,123,255,.55);font-size:20px}
+.syncpill{align-self:center;display:flex;align-items:center;gap:6px;margin-top:6px;padding:7px 14px;border-radius:999px;font-size:12px;color:#aebbd0;background:rgba(10,12,16,.75);border:1px solid rgba(160,190,230,.16)}
+.syncpill b{color:#fff;font-weight:700}.syncpill .sep{opacity:.4}
+.syncpill .sd{width:8px;height:8px;border-radius:50%;background:#59647a}.syncpill .sd.on{background:#3bdc7a;box-shadow:0 0 8px #3bdc7a}
+.dials{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(18px,4.5vh,40px);padding:10px 0}
+.dial{width:min(60vw,36vh,250px);aspect-ratio:1;border-radius:50%;padding:9px;position:relative;
+ background:conic-gradient(from 210deg,#f2f5fa,#8c96a5 12%,#e3e8f0 25%,#5d6573 40%,#dfe5ee 55%,#7e8897 70%,#f4f7fb 85%,#f2f5fa);
+ box-shadow:0 0 0 2px #06080b,0 22px 46px rgba(0,0,0,.75),0 0 30px rgba(47,123,255,.12)}
+.dial:active{transform:scale(.97)}
+.dial-in{width:100%;height:100%;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+ background:linear-gradient(158deg,#2a2f38 0%,#171a20 49%,#1c2027 50%,#0f1115 100%);
+ box-shadow:inset 0 0 0 3px #07090c,inset 0 0 0 6px #2f7bff,inset 0 0 0 7px rgba(124,192,255,.55),inset 0 0 26px rgba(47,123,255,.38),inset 0 -14px 26px rgba(0,0,0,.6)}
+.dic{width:44%;height:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.7))}
+.dl{font-size:clamp(14px,4.2vw,18px);font-weight:600;letter-spacing:1.2px;color:#f2f6fc}
+.dial .bar{display:block;width:22%;height:5px;border-radius:3px;background:linear-gradient(90deg,#2f7bff,#7cc0ff);box-shadow:0 0 10px rgba(47,123,255,.9)}
+.h3bar{display:flex;align-items:center;gap:20px;padding:12px 18px calc(16px + env(safe-area-inset-bottom))}
+.h3bar>button svg{width:42px;height:42px;fill:none;stroke:#fff;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+.h3bar .vtxt{margin-left:auto;color:#6b7686;font-size:17px}
+.infob{width:46px;height:46px;border-radius:50%;border:3px solid #fff;color:#fff;font:700 26px/1 Georgia,serif;display:grid;place-items:center}
+.s3top{display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;border-bottom:2px solid #2a2f38}
+.s3top .back{font-size:30px;color:#fff;width:36px}.s3top .logo.sm{font-size:19px}.s3top .ttl{margin-left:auto;color:#8f9bb0;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;padding-right:6px}
+.tabs3{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:2px solid #2a2f38}
+.tabs3 button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 0 10px;color:#b8c2d2;font-size:10.5px;letter-spacing:2px;font-weight:600}
+.tabs3 svg{width:52px;height:40px;fill:none;stroke:currentColor;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+.tabs3 button.on{color:#fff;background:radial-gradient(58% 85% at 50% 108%,rgba(47,123,255,.85),rgba(47,123,255,.18) 55%,transparent 75%)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;padding:6px 22px 30px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px 0 20px;border-bottom:3px solid #2c313b;color:#fff;font-size:17px;font-weight:500}
+.tile svg{width:96px;height:96px;fill:none;stroke:#fff;stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 3px 6px rgba(0,0,0,.6))}
+.tile:active svg{stroke:#7cc0ff}
+.tile:active{border-bottom-color:#2f7bff}
+#s-select #paneTrack .subtabs{background:transparent;border-bottom:2px solid #2a2f38;margin:0}
+#s-select #paneTrack .subtabs{display:flex;gap:0}#s-select #paneTrack .subtabs button{flex:1;border:0;border-radius:0;background:transparent;color:#8f9bb0;font-size:16px;padding:14px 4px;border-bottom:4px solid transparent;box-shadow:none}
+#s-select #paneTrack .subtabs button.on{color:#fff;background:transparent;box-shadow:none;border-bottom-color:#2f7bff}
+#s-select #paneTrack .card,#s-select #paneTrack .row{background:rgba(8,10,14,.82);border:2px solid #2c313b;border-radius:10px}
+#s-select #paneTrack .card svg{background:transparent;box-shadow:none;stroke:#2f7bff;width:58px;height:58px}
+.devres{margin:0 0 12px;padding:12px 14px;border-radius:14px;background:rgba(47,123,255,.14);border:1px solid rgba(124,192,255,.45);color:#dcecff;font-size:14px}
+.devres b{font-size:20px;color:#fff}.devres small{display:block;color:#9fb6d6;margin-top:4px}
 </style>
 </head>
 <body>
 
 <!-- ================= HOME ================= -->
-<div class="screen act" id="s-home">
-  <div class="hero">
-    <svg class="heroarc" viewBox="0 0 200 200"><defs><linearGradient id="ga" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2f7bff" stop-opacity="0"/><stop offset="1" stop-color="#9fd0ff"/></linearGradient></defs><g stroke="rgba(207,230,255,.22)" stroke-width="1.4"><line x1="50.5" y1="149.5" x2="43.4" y2="156.6"/><line x1="39.4" y1="142.4" x2="34.5" y2="145.9"/><line x1="32.9" y1="131.3" x2="27.5" y2="133.8"/><line x1="32.4" y1="118.1" x2="22.7" y2="120.7"/><line x1="26.3" y1="106.4" x2="20.3" y2="107.0"/><line x1="26.3" y1="93.6" x2="20.3" y2="93.0"/><line x1="32.4" y1="81.9" x2="22.7" y2="79.3"/><line x1="32.9" y1="68.7" x2="27.5" y2="66.2"/><line x1="39.4" y1="57.6" x2="34.5" y2="54.1"/><line x1="50.5" y1="50.5" x2="43.4" y2="43.4"/><line x1="57.6" y1="39.4" x2="54.1" y2="34.5"/><line x1="68.7" y1="32.9" x2="66.2" y2="27.5"/><line x1="81.9" y1="32.4" x2="79.3" y2="22.7"/><line x1="93.6" y1="26.3" x2="93.0" y2="20.3"/><line x1="106.4" y1="26.3" x2="107.0" y2="20.3"/><line x1="118.1" y1="32.4" x2="120.7" y2="22.7"/><line x1="131.3" y1="32.9" x2="133.8" y2="27.5"/><line x1="142.4" y1="39.4" x2="145.9" y2="34.5"/><line x1="149.5" y1="50.5" x2="156.6" y2="43.4"/><line x1="160.6" y1="57.6" x2="165.5" y2="54.1"/><line x1="167.1" y1="68.7" x2="172.5" y2="66.2"/><line x1="167.6" y1="81.9" x2="177.3" y2="79.3"/><line x1="173.7" y1="93.6" x2="179.7" y2="93.0"/><line x1="173.7" y1="106.4" x2="179.7" y2="107.0"/><line x1="167.6" y1="118.1" x2="177.3" y2="120.7"/><line x1="167.1" y1="131.3" x2="172.5" y2="133.8"/><line x1="160.6" y1="142.4" x2="165.5" y2="145.9"/><line x1="149.5" y1="149.5" x2="156.6" y2="156.6"/></g><circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,.06)"/><path d="M50.5 149.5A70 70 0 1 1 166 75" fill="none" stroke="url(#ga)" stroke-width="3" stroke-linecap="round"/><circle cx="166" cy="75" r="4" fill="#fff" style="filter:drop-shadow(0 0 6px #7cc0ff)"/></svg>
-    <div class="herotop">
-      <div class="logo"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDggMTA4Ij4gPGRlZnM+IDxyYWRpYWxHcmFkaWVudCBpZD0iYmciIGN4PSIwLjUiIGN5PSIwLjM4IiByPSIwLjc1Ij48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxNjUwQzgiLz48c3RvcCBvZmZzZXQ9IjAuNTUiIHN0b3AtY29sb3I9IiMwQTI0NjYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwNDBCMjIiLz48L3JhZGlhbEdyYWRpZW50PiA8bGluZWFyR3JhZGllbnQgaWQ9InJpbmciIHgxPSIzMCIgeTE9IjcwIiB4Mj0iODAiIHkyPSIzMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI0ZGRkZGRiIgc3RvcC1vcGFjaXR5PSIwLjU1Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjRkZGRkZGIi8+PC9saW5lYXJHcmFkaWVudD4gPGxpbmVhckdyYWRpZW50IGlkPSJob3QiIHgxPSI3MCIgeTE9IjMwIiB4Mj0iNzUiIHkyPSI2NiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzdGRDBGRiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzJGN0JGRiIvPjwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0ibmRsIiB4MT0iNTAiIHkxPSI1MiIgeDI9IjcyIiB5Mj0iMzYiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMyRjdCRkYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM5RkUwRkYiLz48L2xpbmVhckdyYWRpZW50PiA8bGluZWFyR3JhZGllbnQgaWQ9InR4dCIgeDE9IjAiIHkxPSI2NiIgeDI9IjAiIHkyPSI3OCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI0ZGRkZGRiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0JGRDhGRiIvPjwvbGluZWFyR3JhZGllbnQ+IDwvZGVmcz4gPHJlY3Qgd2lkdGg9IjEwOCIgaGVpZ2h0PSIxMDgiIGZpbGw9InVybCgjYmcpIi8+IDxwYXRoIGQ9Ik0wLDg2IEwxMDgsNTggTDEwOCw2NiBMMCw5NCBaIiBmaWxsPSIjRkZGRkZGIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4gPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNTQgNTApIHNjYWxlKDAuOSkgdHJhbnNsYXRlKC01NCAtNTApIj4gPHBhdGggZD0iTTM2LjY4LDY1LjMyIEEyNC41LDI0LjUgMCAxLDEgNzEuMzIsNjUuMzIiIGZpbGw9Im5vbmUiIHN0cm9rZT0idXJsKCNyaW5nKSIgc3Ryb2tlLXdpZHRoPSI0LjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPiA8cGF0aCBkPSJNNjYuMjUsMjYuNzggQTI0LjUsMjQuNSAwIDAsMSA3MS4zMiw2NS4zMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ1cmwoI2hvdCkiIHN0cm9rZS13aWR0aD0iNC4yIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4gPHBhdGggZD0iTTQwLjU2LDYxLjQ0IEw0My4wNCw1OC45NiBNMzUuOTMsNTMuODcgTDM3LjgzLDUzLjI1IE0zNS4yMyw0NS4wMyBMMzguNjksNDUuNTggTTM4LjYzLDM2LjgzIEw0MC4yNSwzOC4wMSBNNDUuMzcsMzEuMDcgTDQ2Ljk2LDM0LjE5IE01NC4wMCwyOS4wMCBMNTQuMDAsMzEuMDAgTTYyLjYzLDMxLjA3IEw2MS4wNCwzNC4xOSBNNjkuMzcsMzYuODMgTDY3Ljc1LDM4LjAxIE03Mi43Nyw0NS4wMyBMNjkuMzEsNDUuNTggTTcyLjA3LDUzLjg3IEw3MC4xNyw1My4yNSBNNjcuNDQsNjEuNDQgTDY0Ljk2LDU4Ljk2IiBmaWxsPSJub25lIiBzdHJva2U9IiNDRkUyRkYiIHN0cm9rZS13aWR0aD0iMS42IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4gPHBhdGggZD0iTTI3LDU5LjUgTDMzLjUsNTkuNSBNMjQuNSw2NCBMMzIsNjQgTTI4LjUsNjguNSBMMzMuNSw2OC41IiBmaWxsPSJub25lIiBzdHJva2U9IiM1RkE4RkYiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4gPHBhdGggZD0iTTcyLjIzLDM2LjYxIEw1NS41OSw1MC41NCBMNDguOTEsNTEuMTggTDUyLjQxLDQ1LjQ2IFoiIGZpbGw9InVybCgjbmRsKSIvPiA8cGF0aCBkPSJNNDkuOCw0OCBhNC4yLDQuMiAwIDEsMCA4LjQsMCBhNC4yLDQuMiAwIDEsMCAtOC40LDAgWiIgZmlsbD0iI0ZGRkZGRiIvPjxwYXRoIGQ9Ik01Mi4yLDQ4IGExLjgsMS44IDAgMSwwIDMuNiwwIGExLjgsMS44IDAgMSwwIC0zLjYsMCBaIiBmaWxsPSIjMkY3QkZGIi8+IDxwYXRoIGQ9Ik0zNy41MyA3Ny41IDM5LjQ1IDY3Ljg4SDQzLjc3UTQ1LjY4IDY3Ljg4IDQ2LjcyIDY4LjcxUTQ3Ljc3IDY5LjU0IDQ3Ljc3IDcxLjA0UTQ3Ljc3IDcyLjI1IDQ3LjE3IDczLjE2UTQ2LjU3IDc0LjA2IDQ1LjQ4IDc0LjU3UTQ0LjM5IDc1LjA4IDQyLjkgNzUuMDhIMzkuOEw0MS41MyA3My43Mkw0MC43NyA3Ny41Wk00My40MSA3Ny41IDQxLjQzIDc0SDQ0Ljc3TDQ2Ljc4IDc3LjVaTTQxLjQ0IDc0LjExIDQwLjMgNzIuNjNINDMuMDdRNDMuNzQgNzIuNjMgNDQuMTEgNzIuM1E0NC40OCA3MS45NiA0NC40OCA3MS4zNlE0NC40OCA3MC44MyA0NC4xNiA3MC42MVE0My44NCA3MC4zOCA0My4yNyA3MC4zOEg0MC43Nkw0Mi40OSA2OC44N1pNNTEuMzEgNzcuNzJRNTAuNDYgNzcuNzIgNDkuNjggNzcuNlE0OC44OSA3Ny40NyA0OC4yNSA3Ny4yNVE0Ny42MiA3Ny4wMiA0Ny4xNSA3Ni43NEw0OC40IDc0LjM1UTQ4Ljk0IDc0LjY1IDQ5LjQ4IDc0Ljg1UTUwLjAyIDc1LjA1IDUwLjU2IDc1LjE1UTUxLjExIDc1LjI1IDUxLjY0IDc1LjI1UTUyLjA3IDc1LjI1IDUyLjM1IDc1LjE4UTUyLjYzIDc1LjExIDUyLjc4IDc0Ljk4UTUyLjkyIDc0Ljg1IDUyLjkyIDc0LjY4UTUyLjkyIDc0LjQ2IDUyLjY3IDc0LjMzUTUyLjQzIDc0LjE5IDUyLjAyIDc0LjA4UTUxLjYyIDczLjk3IDUxLjEzIDczLjg1UTUwLjY0IDczLjczIDUwLjE0IDczLjU1UTQ5LjY1IDczLjM2IDQ5LjI0IDczLjA3UTQ4Ljg0IDcyLjc5IDQ4LjU5IDcyLjM1UTQ4LjM0IDcxLjkxIDQ4LjM0IDcxLjI3UTQ4LjM0IDcwLjE3IDQ4LjkzIDY5LjM2UTQ5LjUxIDY4LjU1IDUwLjYxIDY4LjExUTUxLjcgNjcuNjYgNTMuMjEgNjcuNjZRNTQuMjggNjcuNjYgNTUuMjEgNjcuODdRNTYuMTQgNjguMDkgNTYuODEgNjguNDhMNTUuNjQgNzAuODVRNTUuMDcgNzAuNDkgNTQuMzggNzAuMzFRNTMuNyA3MC4xMyA1MyA3MC4xM1E1Mi41NCA3MC4xMyA1Mi4yMiA3MC4yMlE1MS45IDcwLjMxIDUxLjc1IDcwLjQ2UTUxLjU5IDcwLjYxIDUxLjU5IDcwLjc4UTUxLjU5IDcxIDUxLjg0IDcxLjE0UTUyLjA4IDcxLjI5IDUyLjUgNzEuMzlRNTIuOTEgNzEuNDkgNTMuNCA3MS42MVE1My44OCA3MS43MyA1NC4zNyA3MS45UTU0Ljg2IDcyLjA3IDU1LjI3IDcyLjM1UTU1LjY4IDcyLjYzIDU1LjkzIDczLjA3UTU2LjE4IDczLjUgNTYuMTggNzQuMTNRNTYuMTggNzUuMiA1NS41OSA3Ni4wMVE1NSA3Ni44MSA1My45IDc3LjI3UTUyLjgxIDc3LjcyIDUxLjMxIDc3LjcyWk01Ny4xOCA3Ny41IDU4Ljg3IDY5LjA1IDYwIDcwLjMzSDU2Ljk2TDU3LjQ2IDY3Ljg4SDYyLjM1TDYwLjQzIDc3LjVaTTY2LjI3IDc3LjcyUTY1LjA3IDc3LjcyIDY0LjE0IDc3LjI4UTYzLjIgNzYuODQgNjIuNjcgNzUuOTdRNjIuMTQgNzUuMTEgNjIuMTQgNzMuODJRNjIuMTQgNzIuOTggNjIuMzcgNzIuMTFRNjIuNiA3MS4yMyA2My4wOCA3MC40NFE2My41NiA2OS42NCA2NC4yOSA2OS4wMVE2NS4wMyA2OC4zOSA2Ni4wNCA2OC4wMlE2Ny4wNSA2Ny42NiA2OC4zNCA2Ny42NlE2OS4yNCA2Ny42NiA3MC4wNSA2Ny44NlE3MC44NyA2OC4wNiA3MS4zNyA2OC40Mkw2OS45IDcwLjY0UTY5LjUxIDcwLjM4IDY5LjA4IDcwLjI4UTY4LjY2IDcwLjE3IDY4LjE2IDcwLjE3UTY3LjcxIDcwLjE3IDY3LjM0IDcwLjI4UTY2Ljk3IDcwLjM4IDY2LjY4IDcwLjU4UTY2LjM5IDcwLjc4IDY2LjE4IDcxLjA2UTY1Ljk2IDcxLjM0IDY1LjgyIDcxLjY5UTY1LjY4IDcyLjA0IDY1LjU5IDcyLjQ2UTY1LjU1IDcyLjY2IDY1LjU0IDcyLjg2UTY1LjUyIDczLjA2IDY1LjUxIDczLjI3TDY0Ljg0IDcyLjg3UTY1LjE1IDcyLjMzIDY1LjU0IDcxLjk4UTY1LjkyIDcxLjYzIDY2LjQgNzEuNDVRNjYuODkgNzEuMjcgNjcuNDkgNzEuMjdRNjguMjYgNzEuMjcgNjguOTUgNzEuNTlRNjkuNjMgNzEuOTEgNzAuMDcgNzIuNTJRNzAuNSA3My4xNCA3MC41IDc0LjA1UTcwLjUgNzUuMTYgNjkuOTYgNzUuOTlRNjkuNDEgNzYuODEgNjguNDYgNzcuMjdRNjcuNSA3Ny43MiA2Ni4yNyA3Ny43MlpNNjYuMjUgNzUuNDhRNjYuNjkgNzUuNDggNjcuMDEgNzUuMThRNjcuMzMgNzQuODkgNjcuMzMgNzQuMzhRNjcuMzMgNzMuOTggNjcuMDggNzMuNzVRNjYuODQgNzMuNTEgNjYuNDIgNzMuNTFRNjYuMTIgNzMuNTEgNjUuODggNzMuNjRRNjUuNjMgNzMuNzggNjUuNDkgNzQuMDJRNjUuMzUgNzQuMjYgNjUuMzUgNzQuNTlRNjUuMzUgNzQuODUgNjUuNDUgNzUuMDVRNjUuNTUgNzUuMjUgNjUuNzYgNzUuMzZRNjUuOTYgNzUuNDggNjYuMjUgNzUuNDhaIiBmaWxsPSJ1cmwoI3R4dCkiLz4gPC9nPiA8L3N2Zz4=" alt="" style="width:34px;height:34px;border-radius:9px;margin-right:4px;box-shadow:0 0 0 1px rgba(255,255,255,.15)">RS<span class="n">16</span><span class="chk"></span></div>
-      <button class="rider" onclick="go('s-settings')"><span id="riderName">Rider</span><span class="avatar" id="riderInit">R</span></button>
-    </div>
-    <div class="hello"><div class="eyebrow">Race Speed · Data Logger</div><b>Siap ke lintasan,<br><em id="riderName2">Rider</em></b></div>
+<div class="screen act carbon" id="s-home">
+  <div class="h3top">
+    <div class="logo"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDggMTA4Ij4gPGRlZnM+IDxyYWRpYWxHcmFkaWVudCBpZD0iYmciIGN4PSIwLjUiIGN5PSIwLjM4IiByPSIwLjc1Ij48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxNjUwQzgiLz48c3RvcCBvZmZzZXQ9IjAuNTUiIHN0b3AtY29sb3I9IiMwQTI0NjYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwNDBCMjIiLz48L3JhZGlhbEdyYWRpZW50PiA8bGluZWFyR3JhZGllbnQgaWQ9InJpbmciIHgxPSIzMCIgeTE9IjcwIiB4Mj0iODAiIHkyPSIzMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI0ZGRkZGRiIgc3RvcC1vcGFjaXR5PSIwLjU1Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjRkZGRkZGIi8+PC9saW5lYXJHcmFkaWVudD4gPGxpbmVhckdyYWRpZW50IGlkPSJob3QiIHgxPSI3MCIgeTE9IjMwIiB4Mj0iNzUiIHkyPSI2NiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzdGRDBGRiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzJGN0JGRiIvPjwvbGluZWFyR3JhZGllbnQ+IDxsaW5lYXJHcmFkaWVudCBpZD0ibmRsIiB4MT0iNTAiIHkxPSI1MiIgeDI9IjcyIiB5Mj0iMzYiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMyRjdCRkYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM5RkUwRkYiLz48L2xpbmVhckdyYWRpZW50PiA8bGluZWFyR3JhZGllbnQgaWQ9InR4dCIgeDE9IjAiIHkxPSI2NiIgeDI9IjAiIHkyPSI3OCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI0ZGRkZGRiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0JGRDhGRiIvPjwvbGluZWFyR3JhZGllbnQ+IDwvZGVmcz4gPHJlY3Qgd2lkdGg9IjEwOCIgaGVpZ2h0PSIxMDgiIGZpbGw9InVybCgjYmcpIi8+IDxwYXRoIGQ9Ik0wLDg2IEwxMDgsNTggTDEwOCw2NiBMMCw5NCBaIiBmaWxsPSIjRkZGRkZGIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4gPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNTQgNTApIHNjYWxlKDAuOSkgdHJhbnNsYXRlKC01NCAtNTApIj4gPHBhdGggZD0iTTM2LjY4LDY1LjMyIEEyNC41LDI0LjUgMCAxLDEgNzEuMzIsNjUuMzIiIGZpbGw9Im5vbmUiIHN0cm9rZT0idXJsKCNyaW5nKSIgc3Ryb2tlLXdpZHRoPSI0LjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPiA8cGF0aCBkPSJNNjYuMjUsMjYuNzggQTI0LjUsMjQuNSAwIDAsMSA3MS4zMiw2NS4zMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ1cmwoI2hvdCkiIHN0cm9rZS13aWR0aD0iNC4yIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4gPHBhdGggZD0iTTQwLjU2LDYxLjQ0IEw0My4wNCw1OC45NiBNMzUuOTMsNTMuODcgTDM3LjgzLDUzLjI1IE0zNS4yMyw0NS4wMyBMMzguNjksNDUuNTggTTM4LjYzLDM2LjgzIEw0MC4yNSwzOC4wMSBNNDUuMzcsMzEuMDcgTDQ2Ljk2LDM0LjE5IE01NC4wMCwyOS4wMCBMNTQuMDAsMzEuMDAgTTYyLjYzLDMxLjA3IEw2MS4wNCwzNC4xOSBNNjkuMzcsMzYuODMgTDY3Ljc1LDM4LjAxIE03Mi43Nyw0NS4wMyBMNjkuMzEsNDUuNTggTTcyLjA3LDUzLjg3IEw3MC4xNyw1My4yNSBNNjcuNDQsNjEuNDQgTDY0Ljk2LDU4Ljk2IiBmaWxsPSJub25lIiBzdHJva2U9IiNDRkUyRkYiIHN0cm9rZS13aWR0aD0iMS42IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4gPHBhdGggZD0iTTI3LDU5LjUgTDMzLjUsNTkuNSBNMjQuNSw2NCBMMzIsNjQgTTI4LjUsNjguNSBMMzMuNSw2OC41IiBmaWxsPSJub25lIiBzdHJva2U9IiM1RkE4RkYiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4gPHBhdGggZD0iTTcyLjIzLDM2LjYxIEw1NS41OSw1MC41NCBMNDguOTEsNTEuMTggTDUyLjQxLDQ1LjQ2IFoiIGZpbGw9InVybCgjbmRsKSIvPiA8cGF0aCBkPSJNNDkuOCw0OCBhNC4yLDQuMiAwIDEsMCA4LjQsMCBhNC4yLDQuMiAwIDEsMCAtOC40LDAgWiIgZmlsbD0iI0ZGRkZGRiIvPjxwYXRoIGQ9Ik01Mi4yLDQ4IGExLjgsMS44IDAgMSwwIDMuNiwwIGExLjgsMS44IDAgMSwwIC0zLjYsMCBaIiBmaWxsPSIjMkY3QkZGIi8+IDxwYXRoIGQ9Ik0zNy41MyA3Ny41IDM5LjQ1IDY3Ljg4SDQzLjc3UTQ1LjY4IDY3Ljg4IDQ2LjcyIDY4LjcxUTQ3Ljc3IDY5LjU0IDQ3Ljc3IDcxLjA0UTQ3Ljc3IDcyLjI1IDQ3LjE3IDczLjE2UTQ2LjU3IDc0LjA2IDQ1LjQ4IDc0LjU3UTQ0LjM5IDc1LjA4IDQyLjkgNzUuMDhIMzkuOEw0MS41MyA3My43Mkw0MC43NyA3Ny41Wk00My40MSA3Ny41IDQxLjQzIDc0SDQ0Ljc3TDQ2Ljc4IDc3LjVaTTQxLjQ0IDc0LjExIDQwLjMgNzIuNjNINDMuMDdRNDMuNzQgNzIuNjMgNDQuMTEgNzIuM1E0NC40OCA3MS45NiA0NC40OCA3MS4zNlE0NC40OCA3MC44MyA0NC4xNiA3MC42MVE0My44NCA3MC4zOCA0My4yNyA3MC4zOEg0MC43Nkw0Mi40OSA2OC44N1pNNTEuMzEgNzcuNzJRNTAuNDYgNzcuNzIgNDkuNjggNzcuNlE0OC44OSA3Ny40NyA0OC4yNSA3Ny4yNVE0Ny42MiA3Ny4wMiA0Ny4xNSA3Ni43NEw0OC40IDc0LjM1UTQ4Ljk0IDc0LjY1IDQ5LjQ4IDc0Ljg1UTUwLjAyIDc1LjA1IDUwLjU2IDc1LjE1UTUxLjExIDc1LjI1IDUxLjY0IDc1LjI1UTUyLjA3IDc1LjI1IDUyLjM1IDc1LjE4UTUyLjYzIDc1LjExIDUyLjc4IDc0Ljk4UTUyLjkyIDc0Ljg1IDUyLjkyIDc0LjY4UTUyLjkyIDc0LjQ2IDUyLjY3IDc0LjMzUTUyLjQzIDc0LjE5IDUyLjAyIDc0LjA4UTUxLjYyIDczLjk3IDUxLjEzIDczLjg1UTUwLjY0IDczLjczIDUwLjE0IDczLjU1UTQ5LjY1IDczLjM2IDQ5LjI0IDczLjA3UTQ4Ljg0IDcyLjc5IDQ4LjU5IDcyLjM1UTQ4LjM0IDcxLjkxIDQ4LjM0IDcxLjI3UTQ4LjM0IDcwLjE3IDQ4LjkzIDY5LjM2UTQ5LjUxIDY4LjU1IDUwLjYxIDY4LjExUTUxLjcgNjcuNjYgNTMuMjEgNjcuNjZRNTQuMjggNjcuNjYgNTUuMjEgNjcuODdRNTYuMTQgNjguMDkgNTYuODEgNjguNDhMNTUuNjQgNzAuODVRNTUuMDcgNzAuNDkgNTQuMzggNzAuMzFRNTMuNyA3MC4xMyA1MyA3MC4xM1E1Mi41NCA3MC4xMyA1Mi4yMiA3MC4yMlE1MS45IDcwLjMxIDUxLjc1IDcwLjQ2UTUxLjU5IDcwLjYxIDUxLjU5IDcwLjc4UTUxLjU5IDcxIDUxLjg0IDcxLjE0UTUyLjA4IDcxLjI5IDUyLjUgNzEuMzlRNTIuOTEgNzEuNDkgNTMuNCA3MS42MVE1My44OCA3MS43MyA1NC4zNyA3MS45UTU0Ljg2IDcyLjA3IDU1LjI3IDcyLjM1UTU1LjY4IDcyLjYzIDU1LjkzIDczLjA3UTU2LjE4IDczLjUgNTYuMTggNzQuMTNRNTYuMTggNzUuMiA1NS41OSA3Ni4wMVE1NSA3Ni44MSA1My45IDc3LjI3UTUyLjgxIDc3LjcyIDUxLjMxIDc3LjcyWk01Ny4xOCA3Ny41IDU4Ljg3IDY5LjA1IDYwIDcwLjMzSDU2Ljk2TDU3LjQ2IDY3Ljg4SDYyLjM1TDYwLjQzIDc3LjVaTTY2LjI3IDc3LjcyUTY1LjA3IDc3LjcyIDY0LjE0IDc3LjI4UTYzLjIgNzYuODQgNjIuNjcgNzUuOTdRNjIuMTQgNzUuMTEgNjIuMTQgNzMuODJRNjIuMTQgNzIuOTggNjIuMzcgNzIuMTFRNjIuNiA3MS4yMyA2My4wOCA3MC40NFE2My41NiA2OS42NCA2NC4yOSA2OS4wMVE2NS4wMyA2OC4zOSA2Ni4wNCA2OC4wMlE2Ny4wNSA2Ny42NiA2OC4zNCA2Ny42NlE2OS4yNCA2Ny42NiA3MC4wNSA2Ny44NlE3MC44NyA2OC4wNiA3MS4zNyA2OC40Mkw2OS45IDcwLjY0UTY5LjUxIDcwLjM4IDY5LjA4IDcwLjI4UTY4LjY2IDcwLjE3IDY4LjE2IDcwLjE3UTY3LjcxIDcwLjE3IDY3LjM0IDcwLjI4UTY2Ljk3IDcwLjM4IDY2LjY4IDcwLjU4UTY2LjM5IDcwLjc4IDY2LjE4IDcxLjA2UTY1Ljk2IDcxLjM0IDY1LjgyIDcxLjY5UTY1LjY4IDcyLjA0IDY1LjU5IDcyLjQ2UTY1LjU1IDcyLjY2IDY1LjU0IDcyLjg2UTY1LjUyIDczLjA2IDY1LjUxIDczLjI3TDY0Ljg0IDcyLjg3UTY1LjE1IDcyLjMzIDY1LjU0IDcxLjk4UTY1LjkyIDcxLjYzIDY2LjQgNzEuNDVRNjYuODkgNzEuMjcgNjcuNDkgNzEuMjdRNjguMjYgNzEuMjcgNjguOTUgNzEuNTlRNjkuNjMgNzEuOTEgNzAuMDcgNzIuNTJRNzAuNSA3My4xNCA3MC41IDc0LjA1UTcwLjUgNzUuMTYgNjkuOTYgNzUuOTlRNjkuNDEgNzYuODEgNjguNDYgNzcuMjdRNjcuNSA3Ny43MiA2Ni4yNyA3Ny43MlpNNjYuMjUgNzUuNDhRNjYuNjkgNzUuNDggNjcuMDEgNzUuMThRNjcuMzMgNzQuODkgNjcuMzMgNzQuMzhRNjcuMzMgNzMuOTggNjcuMDggNzMuNzVRNjYuODQgNzMuNTEgNjYuNDIgNzMuNTFRNjYuMTIgNzMuNTEgNjUuODggNzMuNjRRNjUuNjMgNzMuNzggNjUuNDkgNzQuMDJRNjUuMzUgNzQuMjYgNjUuMzUgNzQuNTlRNjUuMzUgNzQuODUgNjUuNDUgNzUuMDVRNjUuNTUgNzUuMjUgNjUuNzYgNzUuMzZRNjUuOTYgNzUuNDggNjYuMjUgNzUuNDhaIiBmaWxsPSJ1cmwoI3R4dCkiLz4gPC9nPiA8L3N2Zz4=" alt="" style="width:34px;height:34px;border-radius:9px;margin-right:4px;box-shadow:0 0 0 1px rgba(255,255,255,.15)">RS<span class="n">16</span></div>
+    <button class="rider" onclick="go('s-settings')"><span id="riderName">Rider</span><span class="avatar ring" id="riderInit">R</span></button>
   </div>
-  <div class="statusbar num">
-    <div><b id="hmConn">Off</b><span>Alat</span></div>
-    <div><b id="hmSat">--</b><span>Satelit</span></div>
-    <div><b id="hmSess">0</b><span>Sesi</span></div>
+  <button class="syncpill" onclick="go('s-link')"><span class="sd" id="homeDot"></span><span id="hmConn">Off</span><span class="sep">·</span><span><b id="hmSat">--</b> sat</span><span class="sep">·</span><span><b id="hmSess">0</b> sesi</span><span class="sep">·</span><span id="hmSync">sinkron mati</span><span id="riderName2" hidden></span></button>
+  <div class="dials">
+    <button class="dial" onclick="go('s-select')"><span class="dial-in">
+      <svg class="dic" viewBox="0 0 96 96"><defs><linearGradient id="chr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#cfd8e6"/><stop offset="1" stop-color="#8a96a8"/></linearGradient></defs>
+        <g fill="none" stroke="url(#chr)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><circle cx="48" cy="54" r="30"/><path d="M40 14h16M48 14v10M74 30l5-5"/></g>
+        <path d="M51 34L38 58h11l-4 18 15-26H49z" fill="url(#chr)"/></svg>
+      <span class="dl">MULAI BALAPAN</span><i class="bar"></i></span></button>
+    <button class="dial" onclick="openHistory()"><span class="dial-in">
+      <svg class="dic" viewBox="0 0 96 96"><g fill="none" stroke="url(#chr)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 72V26a6 6 0 0 1 6-6h18l7 8h29a6 6 0 0 1 6 6v8"/><path d="M12 72l9-28h50"/></g>
+        <circle cx="66" cy="62" r="18" fill="#12151b" stroke="#2f7bff" stroke-width="6"/><path d="M66 52v11l7 5" fill="none" stroke="#7cc0ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="dl">RIWAYAT</span><i class="bar"></i></span></button>
   </div>
-  <div class="homebody">
-    <button class="bigcard primary" onclick="go('s-select')">
-      <div class="bi"><svg class="i" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h13l-2.5 4L18 12H5" fill="currentColor" fill-opacity=".25"/></svg></div>
-      <div><div class="bt">MULAI BALAPAN</div><div class="bs">Mode Speed & Track</div></div><span class="chev">›</span></button>
-    <button class="bigcard" onclick="openHistory()">
-      <div class="bi"><svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></div>
-      <div><div class="bt">RIWAYAT</div><div class="bs">Sesi, lap, peta & grafik</div></div><span class="chev">›</span></button>
-  </div>
-  <div class="ver" id="homeVer">RS16 Race Speed</div>
-  <nav class="bottomnav">
-    <button onclick="openTrophy()"><svg class="i" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3M12 14v4M8 21h8"/></svg>Rekor</button>
-    <button onclick="go('s-link')"><svg class="i" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/></svg>Koneksi<span class="linkdot" id="homeDot"></span></button>
-    <button onclick="go('s-settings')"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Pengaturan</button>
-    <button onclick="go('s-info')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>Info</button>
+  <nav class="h3bar">
+    <button onclick="openTrophy()" aria-label="Rekor"><svg viewBox="0 0 48 48"><path d="M15 8h18v11a9 9 0 0 1-18 0z"/><path d="M15 11H8v4a7 7 0 0 0 7 7M33 11h7v4a7 7 0 0 1-7 7M24 28v7M16 41h16M19 35h10v6H19z"/><path d="M18 12h4v4h-4zM26 16h4v4h-4zM22 16h4v4h-4zM26 12" stroke-width="0" fill="currentColor"/></svg></button>
+    <button onclick="go('s-settings')" aria-label="Pengaturan"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="6"/><path d="M24 5l3 5 6-1 1 6 5 3-3 5 3 5-5 3-1 6-6-1-3 5-3-5-6 1-1-6-5-3 3-5-3-5 5-3 1-6 6 1z"/></svg></button>
+    <button onclick="go('s-link')" aria-label="Koneksi alat"><svg viewBox="0 0 48 48"><path d="M36 17a14 14 0 0 0-25-3M12 31a14 14 0 0 0 25 3"/><path d="M10 7v7h7M38 41v-7h-7"/><circle cx="24" cy="24" r="4" fill="currentColor"/></svg></button>
+    <span class="vtxt" id="homeVer">v</span>
+    <button class="infob" onclick="go('s-info')" aria-label="Info">i</button>
   </nav>
 </div>
 
 <!-- ================= SELECT (Mulai) ================= -->
-<div class="screen" id="s-select">
-  <div class="topbar"><button class="back" onclick="back()">‹</button><div class="ttl">Pilih mode</div><button class="act" onclick="go('s-link')">Koneksi</button></div>
-  <div class="modeswitch">
-    <button id="tabSpeed" class="on" onclick="selTab('speed')"><svg class="i" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/></svg>Speed</button>
-    <button id="tabTrack" onclick="selTab('track')"><svg class="i" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h13l-2.5 4L18 12H5"/></svg>Track</button>
+<div class="screen carbon" id="s-select">
+  <div class="s3top"><button class="back" onclick="back()">‹</button><div class="logo sm">RS<span class="n">16</span></div><div class="ttl">Pilih mode</div></div>
+  <div class="tabs3">
+    <button id="tabSpeed" class="on" onclick="selTab('speed')" aria-label="Speed"><svg viewBox="0 0 64 48"><path d="M22 38a20 20 0 1 1 36 0"/><path d="M40 38l10-13"/><circle cx="40" cy="38" r="3" fill="currentColor"/><path d="M4 22h10M2 30h12M6 14h9"/></svg><span>SPEED</span></button>
+    <button id="tabTrack" onclick="selTab('track')" aria-label="Track"><svg viewBox="0 0 64 48"><path d="M10 34c0-8 6-10 12-12s6-12 14-12 10 8 16 8 6 8 2 12-14 2-18 8-6 10-14 10-12-6-12-14z"/><path d="M46 8V2M46 2h10l-3 3 3 3H46" stroke-width="2.6"/></svg><span>TRACK</span></button>
+    <button onclick="go('s-link')" aria-label="Koneksi alat"><svg viewBox="0 0 64 48"><path d="M44 15a16 16 0 0 0-26-4M20 33a16 16 0 0 0 26 4"/><path d="M15 4v8h8M49 44v-8h-8"/><circle cx="32" cy="24" r="4" fill="currentColor"/></svg><span>ALAT</span></button>
   </div>
   <div class="scroll" id="paneSpeed">
-    <div class="modelist">
-      <button class="mode" onclick="dragPick('speed')"><div class="mi"><svg viewBox="0 0 64 64"><path d="M10 46a24 24 0 1 1 44 0"/><path d="M32 40l12-14"/><circle cx="32" cy="40" r="3"/></svg></div><div><div class="mt">0 – Kecepatan</div><div class="ms">Waktu dari diam sampai 60/100/150 km/h</div></div><span class="chev">›</span></button>
-      <button class="mode" onclick="dragPick('dist')"><div class="mi"><svg viewBox="0 0 64 64"><path d="M8 44h48M8 36v16M56 36v16"/><path d="M20 26l-6-6 6-6M44 14l6 6-6 6M14 20h36"/></svg></div><div><div class="mt">0 – Jarak</div><div class="ms">100 m, 201 m, 402 m, 1000 m</div></div><span class="chev">›</span></button>
-      <button class="mode" onclick="dragPick('s0s')"><div class="mi"><svg viewBox="0 0 64 64"><path d="M6 52l16-34 10 20 10-20 16 34"/></svg></div><div><div class="mt">0 – Speed – 0</div><div class="ms">Akselerasi + pengereman sampai berhenti</div></div><span class="chev">›</span></button>
-      <button class="mode" onclick="startDrag({mode:'quarter',target:402.34})"><div class="mi"><svg viewBox="0 0 64 64"><rect x="18" y="6" width="28" height="52" rx="8"/><circle cx="32" cy="18" r="4"/><circle cx="32" cy="32" r="4"/><circle cx="32" cy="46" r="4"/></svg></div><div><div class="mt">Drag 1/4 mile</div><div class="ms">60 ft, 100 m, 1/8 mile, trap speed</div></div><span class="chev">›</span></button>
-      <button class="mode" onclick="dragRecent()"><div class="mi"><svg viewBox="0 0 64 64"><path d="M14 40a20 20 0 1 0 2-20"/><path d="M8 18l7 3-1 8"/><path d="M32 18v15l-6 6"/></svg></div><div><div class="mt">Terakhir dipakai</div><div class="ms">Ulangi mode sebelumnya</div></div><span class="chev">›</span></button>
+    <div class="tiles">
+      <button class="tile" onclick="dragRecent()"><svg viewBox="0 0 96 96"><path d="M22 38a30 30 0 1 1 4 30"/><path d="M12 30l9 9 10-7" /><path d="M50 30v20l12 8"/></svg><span>Terakhir</span></button>
+      <button class="tile" onclick="dragPick('speed')"><svg viewBox="0 0 96 96"><path d="M16 66a34 34 0 1 1 64 0"/><path d="M48 66l18-22"/><circle cx="48" cy="66" r="5" fill="currentColor"/><path d="M28 40l5 4M48 30v6M68 40l-5 4"/></svg><span>Kecepatan</span></button>
+      <button class="tile" onclick="dragPick('dist')"><svg viewBox="0 0 96 96"><path d="M20 76V22M76 76V22"/><path d="M20 22h14v10H20z" fill="currentColor"/><path d="M76 22h-6v4h6M70 26h6v4h-6" stroke-width="3"/><path d="M28 54h40M60 46l8 8-8 8"/><path d="M12 76h16M68 76h16"/></svg><span>Jarak</span></button>
+      <button class="tile" onclick="dragPick('s0s')"><svg viewBox="0 0 96 96"><path d="M10 72h18l20-44 20 44h18"/><path d="M40 40l8-12 8 12" /><circle cx="48" cy="80" r="4" fill="currentColor"/></svg><span>0-Speed-0</span></button>
+      <button class="tile" onclick="startDrag({mode:'quarter',target:402.34})"><svg viewBox="0 0 96 96"><path d="M48 16v66M30 16h36M34 84h28"/><circle cx="38" cy="30" r="5"/><circle cx="58" cy="30" r="5"/><circle cx="38" cy="46" r="5"/><circle cx="58" cy="46" r="5"/><circle cx="38" cy="62" r="5" fill="#2f7bff" stroke="#7cc0ff"/><circle cx="58" cy="62" r="5" fill="#2f7bff" stroke="#7cc0ff"/></svg><span>0-1/4 Mile</span></button>
+      <button class="tile" onclick="startDrag({mode:'dist',target:201.17})"><svg viewBox="0 0 96 96"><path d="M48 16v66M30 16h36M34 84h28"/><circle cx="38" cy="34" r="5"/><circle cx="58" cy="34" r="5"/><circle cx="38" cy="54" r="5" fill="#2f7bff" stroke="#7cc0ff"/><circle cx="58" cy="54" r="5" fill="#2f7bff" stroke="#7cc0ff"/></svg><span>0-1/8 Mile</span></button>
     </div>
   </div>
   <div class="scroll" id="paneTrack" style="display:none;position:relative">
@@ -621,7 +665,7 @@ if (false) module.exports = { parseLine, Proc, DragRun, Sim, makeDemoTrack, fmtL
 // ================= APP =================
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 // ---------- versi & jembatan APK ----------
-const APP_VER = '1.2.0';               // versi tampilan aplikasi (naikkan setiap update)
+const APP_VER = '1.3.0';               // versi tampilan aplikasi (naikkan setiap update)
 const NATIVE = window.RS16Native || null; // ada kalau dibuka dari APK RS16
 function nat(fn, ...a) { try { return NATIVE && typeof NATIVE[fn] === 'function' ? NATIVE[fn](...a) : undefined; } catch (e) { console.log('native', fn, e); } }
 function verCmp(a, b) { const x = String(a || '0').split('.').map(Number), y = String(b || '0').split('.').map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; } return 0; }
@@ -738,6 +782,7 @@ async function sendHz(hz) { if (Conn.type === 'sim') { toast('Simulasi selalu 25
 const connName = { ble: 'Bluetooth', ws: 'WiFi', sim: 'Simulasi' };
 function updConnUI() {
   const on = Conn.status === 'on'; $('#homeDot').classList.toggle('on', on);
+  { const e = $('#hmSync'); if (e) e.textContent = devSyncOn() ? 'sinkron aktif' : on && S.dev && S.dev.name === 'RS16' ? 'update alat utk sinkron' : 'sinkron mati'; }
   $('#hmConn').textContent = on ? ({ ble: 'BLE', ws: 'WiFi', sim: 'Sim' })[Conn.type] : Conn.status === 'connecting' ? '…' : 'Off'; $('#hmSat').textContent = on && S.sats ? S.sats : '--';
   ['#runDot', '#dragDot'].forEach(s => $(s).classList.toggle('on', on && S.fix));
   updLink();
@@ -753,7 +798,8 @@ function updLink() {
 // ================= DATA MASUK =================
 let dirty = false;
 function onLine(l) {
-  if (l.startsWith('HELLO,')) { const f = l.trim().split(','); S.dev = { name: f[1], fw: f[2] }; dirty = true; fwOffer(); setTimeout(offerImport, 1500); return; }
+  if (l.startsWith('HELLO,')) { const f = l.trim().split(','); S.dev = { name: f[1], fw: f[2] }; dirty = true; fwOffer(); setTimeout(() => devSyncOn() ? syncDevice() : offerImport(), 1500); updConnUI(); return; }
+  if ((l.startsWith('SYNC,') || l.startsWith('SET,')) && onDevLine(l)) return;
   const p = parseLine(l); if (!p) return;
   S.sats = p.sat;
   if (p.nofix) { S.fix = false; dirty = true; return; }
@@ -850,6 +896,7 @@ function startTrack(id, sim) {
   if (!sim && Conn.type === 'sim') Conn.close();
   if (!sim && needConn()) return;
   touchRecent('recentTracks', id);
+  if (!sim && devSyncOn()) Conn.send('SET,CIRCUIT');   // 1.3.0 sinkron: alat ikut masuk mode CIRCUIT
   const proc = new Proc(t);
   S.run = { kind: 'track', track: t, proc, t0: Date.now(), sim: !!sim };
   proc.onLap = lap => showFlash(lap);
@@ -957,7 +1004,8 @@ async function startDrag(cfg) {
   if (Conn.type === 'sim') Conn.simObj.setMode('drag');
   let r = store.get('recentDrag', []).filter(c => !(c.mode === cfg.mode && c.target === cfg.target)); r.unshift(cfg); store.set('recentDrag', r.slice(0, 8));
   const d = new DragRun(cfg); S.run = { kind: 'drag', cfg, drag: d, t0: Date.now() };
-  d.onDone = res => { saveDrag(res); vib([150, 80, 150]); renderDrag(); };
+  d.onDone = res => { if (!devSyncOn()) saveDrag(res); vib([150, 80, 150]); renderDrag(); };   // 1.3.0: tersambung RS16 = hasil resmi diambil dari alat (tidak dobel)
+  if (devSyncOn()) Conn.send('SET,DRAG,' + cfg.mode + ',' + cfg.target);
   d.onFail = () => renderDrag();
   $('#dragTitle').textContent = dragLabel(cfg); $('#dResult').innerHTML = ''; $('#dMs').innerHTML = ''; $('#dChart').style.display = 'none';
   go('s-drag'); wake(true); renderDrag();
@@ -1444,11 +1492,11 @@ async function devFileList() {
   (j.runs || []).forEach(x => { const k = x.t + x.d; if ((done[k] || 0) < x.n) todo.push({ kind: 'run', t: x.t, d: x.d, n: x.n, from: done[k] || 0, size: x.size, name: k }); });
   return { all: (j.files || []).length + (j.runs || []).length, todo, count: todo.reduce((a, x) => a + (x.kind === 'run' ? x.n - x.from : 1), 0) };
 }
-async function importFromDevice() {
+async function importFromDevice(silent) {   // 1.3.0: silent = sinkron otomatis (tanpa jendela)
   if (S.importing) return; S.importing = 1; S.importCancel = 0;
-  openSheet(`<h2>Ambil data dari alat</h2><div class="fwprog"><div class="bar"><i id="imBar"></i></div><div class="note num" id="imMsg">Mencari data di alat…</div></div><div class="btns" style="margin-top:14px"><button class="btn" onclick="S.importCancel=1;closeSheet()">Tutup</button></div>`);
-  const msg = t => { const m = $('#imMsg'); if (m) m.textContent = t; }, bar = p => { const b = $('#imBar'); if (b) b.style.width = Math.round(p) + '%'; };
-  let ok = 0, full = false;
+  if (!silent) openSheet(`<h2>Ambil data dari alat</h2><div class="fwprog"><div class="bar"><i id="imBar"></i></div><div class="note num" id="imMsg">Mencari data di alat…</div></div><div class="btns" style="margin-top:14px"><button class="btn" onclick="S.importCancel=1;closeSheet()">Tutup</button></div>`);
+  const msg = silent ? () => { } : t => { const m = $('#imMsg'); if (m) m.textContent = t; }, bar = silent ? () => { } : p => { const b = $('#imBar'); if (b) b.style.width = Math.round(p) + '%'; };
+  let ok = 0, full = false, lastDrag = null;
   try {
     const { all, todo } = await devFileList();
     if (!todo.length) { bar(100); msg(all ? 'Tidak ada data baru. Semua data alat sudah ada di Riwayat.' : 'Belum ada data tersimpan di alat.'); return; }
@@ -1464,7 +1512,7 @@ async function importFromDevice() {
         msg(`Mengambil riwayat ${f.t === 'c' ? 'CIRCUIT' : 'DRAG'} ${fmtYmd(f.d)} (${i + 1}/${todo.length})`);
         const res = await fetch(devBase() + `/api/runs?t=${f.t}&d=${f.d}`, { cache: 'no-store' }); if (!res.ok) continue;
         const recs = (await res.json()).filter(r => r.i >= f.from); let n = f.from;
-        for (const r of recs) { const id = f.t === 'c' ? importCirc(f.d, r) : importDragRec(f.d, r); if (!id) { full = true; break; } ok++; n = r.i + 1; }
+        for (const r of recs) { const id = f.t === 'c' ? importCirc(f.d, r) : importDragRec(f.d, r); if (!id) { full = true; break; } ok++; n = r.i + 1; if (f.t !== 'c') lastDrag = id; }
         done[f.name] = full ? n : f.n;
       }
       store.set('imported', done);
@@ -1472,8 +1520,11 @@ async function importFromDevice() {
     const h = store.get('hist', []); h.sort((a, b) => b.date - a.date); store.set('hist', h);
     bar(100); msg(full ? `Memori aplikasi penuh setelah ${ok} data. Backup lalu hapus sesi lama di Riwayat, kemudian ulangi.` : S.importCancel ? `Dihentikan. ${ok} data sudah masuk.` : `Selesai: ${ok} data baru masuk ke Riwayat.`);
     renderHistory();
+    if (silent && ok) { toast(ok + ' data baru dari alat RS16 masuk Riwayat'); devSyncShow(lastDrag); $('#hmSess').textContent = store.get('hist', []).length; }
+    if (silent && full) toast('Memori aplikasi penuh — backup lalu hapus sesi lama');
   } catch (e) {
     console.log('import', e && e.stack || e);
+    if (silent) { if (!S.syncRetry) { S.syncRetry = 1; setTimeout(() => { S.syncRetry = 0; syncDevice(); }, 6000); } return; }   // alat sibuk mengukur: coba lagi
     msg(e.message === 'old' ? 'Firmware alat belum mendukung ambil data (perlu V36.10 ke atas). Update firmware alat dulu.' : 'Gagal tersambung ke alat. Pastikan WiFi alat ON dan HP tersambung ke RS16_0016.');
   } finally { S.importing = 0; }
 }
@@ -1533,6 +1584,23 @@ function importSdCsv(name, txt) {
   const id = saveTrackSession({ t0: date, track: tr || { id: null, name: 'Log alat ' + (m ? `${m[3]}/${m[2]} ${m[4]}.${m[5]}` : name.replace(/^\//, '')), gates: [] }, proc: pr });
   if (id) { const h = store.get('hist', []); h[0].src = name; store.set('hist', h); }
   return id ? true : 'full';
+}
+// ================= SINKRON DENGAN ALAT RS16 (1.3.0, firmware V36.9.14+) =================
+// Aplikasi -> alat : pilih mode DRAG = alat masuk READY mode yang sama ("SET,DRAG,mode,target"); mulai Track = alat CIRCUIT ("SET,CIRCUIT").
+// Alat -> aplikasi : alat kirim "SYNC,h|c,YYYYMMDD" tiap hasil tersimpan -> aplikasi langsung mengambil hasil resmi alat.
+function verGE(a, b) { a = String(a || '').replace(/^V/i, '').split('.').map(Number); b = b.split('.').map(Number); for (let i = 0; i < b.length; i++) { const x = a[i] || 0; if (x !== b[i]) return x > b[i]; } return true; }
+function devSyncOn() { return Conn.status === 'on' && Conn.type === 'ws' && S.dev && S.dev.name === 'RS16' && verGE(S.dev.fw, '36.9.14'); }
+function syncDevice() { if (!devSyncOn()) return; clearTimeout(S.syncT); S.syncT = setTimeout(() => importFromDevice(true), 700); }
+function devSyncShow(id) {
+  if (!id || !S.run || S.run.kind !== 'drag' || S.stack[S.stack.length - 1] !== 's-drag') return;
+  const s = store.get('h_' + id, null); if (!s) return;
+  $('#dResult').insertAdjacentHTML('afterbegin', `<div class="devres">✔ Hasil resmi alat RS16: <b class="num">${(s.time / 1000).toFixed(3)} s</b>${s.trap ? ' · trap ' + s.trap.toFixed(1) + ' km/h' : ''}<small>Tersimpan di Riwayat (${esc(s.label)})</small></div>`);
+}
+function onDevLine(l) {   // baris perintah dari alat
+  const f = l.trim().split(',');
+  if (f[0] === 'SYNC') { syncDevice(); return true; }
+  if (f[0] === 'SET') { if (f[1] === 'OK') toast('Alat RS16: ' + (f.slice(2).join(',') || 'siap')); else if (f[1] === 'BUSY') toast('Alat sedang mengukur — mode di alat tidak diganti'); else toast('Mode ini tidak ada di alat RS16'); return true; }
+  return false;
 }
 // saat tersambung ke alat: tawarkan ambil data baru
 async function offerImport() {
@@ -1635,8 +1703,8 @@ function fwOffer() {
 // ================= START =================
 (function init() {
   const info = NATIVE ? JSON.parse(nat('info') || '{}') : {};
-  $('#homeVer').textContent = 'RS16 Race Speed v' + (info.app || APP_VER) + (info.app && info.app !== APP_VER ? ' · tampilan v' + APP_VER : '');
-  $('#infoVer').textContent = $('#homeVer').textContent;
+  $('#homeVer').textContent = (info.app || APP_VER);
+  $('#infoVer').textContent = 'RS16 Race Speed v' + (info.app || APP_VER) + (info.app && info.app !== APP_VER ? ' · tampilan v' + APP_VER : '');
   onShow['s-home']();
   if (onDevicePage()) {
     const u = 'ws://' + location.hostname + ':81/'; $('#wsUrl').value = u; Conn.ws(u); // dibuka dari alat -> langsung sambung WiFi

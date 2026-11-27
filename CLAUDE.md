@@ -56,3 +56,6 @@ Setelah setiap perubahan, pastikan isi fungsi-fungsi di atas identik dengan comm
   update firmware POST /update (multipart, Basic auth). Perintah `HZ,..` dari aplikasi sengaja diabaikan (rate dikunci).
   Ambil data (aplikasi 1.2.0, firmware V36.9.6+): GET /api/files, /api/file?name=/LOG_..CSV (microSD), /api/runs?t=h|c&d=YYYYMMDD
   (riwayat dari IC flash). Sumber APK ada di `aplikasi_apk/RS16RaceSpeed`; aplikasi yang sama tertanam di firmware (gzip).
+  Sinkron (aplikasi 1.3.0, firmware V36.9.14+): aplikasi -> alat `SET,DRAG,<quarter|dist|speed|s0s>,<target>` / `SET,CIRCUIT`
+  (alat masuk READY / CIRCUIT, ditolak `SET,BUSY` saat mengukur; balasan `SET,OK,<teks>`); alat -> aplikasi `SYNC,h|c,YYYYMMDD`
+  setelah hasil tersimpan -> aplikasi mengambil hasil resmi alat (hasil hitungan aplikasi sendiri tidak disimpan saat sinkron).

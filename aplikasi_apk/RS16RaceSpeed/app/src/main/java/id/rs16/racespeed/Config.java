@@ -3,7 +3,7 @@ package id.rs16.racespeed;
 /** Pengaturan aplikasi RS16. Ubah di sini saja. */
 public final class Config {
     /** Versi aplikasi (samakan dengan versionName di app/build.gradle). */
-    public static final String APP_VERSION = "1.2.0";
+    public static final String APP_VERSION = "1.3.0";
 
     /**
      * ALAMAT SERVER UPDATE, wajib diakhiri "/".
